@@ -207,7 +207,6 @@ double kineticGTO(GTO GTO1, GTO GTO2)
 }
 
 
-
 //compute nuclear integral of GTO
 double nuclearGTO(GTO GTO1, GTO GTO2, double charge, vec3 nucleus)
 {
