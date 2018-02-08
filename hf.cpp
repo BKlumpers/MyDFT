@@ -8,16 +8,6 @@ Published under GNU General Public License 3.0
 
 dev-notes:
 *no error handling implemented, only printing error messages
-*TODO: do not calculate norm everytime for get_norm
-
-//norm was found to be correct in case of zero angular momentum (compared with analytical solutions)
-//factorial, doublefactorial_odd and binomialCoeff confirmed to yield expected results
-//binomial_composite agrees with hfcxx
-//overlap integral agrees with hfcxx and calculations by hand
-//fmch confirmed to yield same results as numerical integration procedure
-
-//overlapCGF and kineticGTO unconfirmed if working (WIP)
-//nuclearGTO not yet implemented (empty function call)
 
 *****************************************************************/
 
@@ -84,50 +74,14 @@ double overlapCGF(CGF CGF1, CGF CGF2);
 
 int main() {
     std::cout << "Initialising" << std::endl;
-    double N = 3; //number of Gaussians per Slater-type orbital
-    double Z = 1; //core charge
 
     //testblock
-    GTO testGTO;
-    testGTO.alpha = 1;
-    testGTO.a = 0;
-    testGTO.b = 0;
-    testGTO.c = 0;
-    testGTO.atompos << 0,0,0;
-    double norm = testGTO.getnorm();
-
-    GTO testGTO2;
-    testGTO2.alpha = 2;
-    testGTO2.a = 0;
-    testGTO2.b = 0;
-    testGTO2.c = 0;
-    testGTO2.atompos << 0,0,0;
-    double norm2 = testGTO2.getnorm();
 
     CGF cgftest;
     vec3 testpos;
     testpos << 0,0,0;
     cgftest.add_gto(0.5,1,2,3,4,testpos);
     cgftest.add_gto(0.8,5,6,7,8,testpos);
-    double tempy;
-    tempy = cgftest.GTOlist[1].alpha;
-    cout << "cgf: " << tempy << endl;
-
-    // for(int i = 0; i<3 ; i++){
-    //     cout << "atompos: [" << i << "] " << testGTO.atompos[i] << endl;
-    // }
-    cout << "norm: " << norm << " also2: " << norm2 << endl;
-    double overlapTest = overlapGTO(testGTO,testGTO2);
-    cout << "overlap: " << overlapTest << endl;
-    cout << "boosty: " << boost::math::tgamma(0.5) << " should be equal to: " << sqrt(3.14159265359) << endl; //test proper call to boost
-    double Fnu_test = fmch(0,1);
-    cout << "Fnu_test: " << Fnu_test << " should be: 0.74682413 (numerical)" << endl;
-    double Fnu_test2 = fmch(1,1);
-    cout << "Fnu_test: " << Fnu_test2 << " should be: 0.18947235 (numerical)" << endl;
-    // vec3 vectest(1,1,0);
-    // for(int i = 0; i<3 ; i++){
-    //     cout << "vectest: [" << i << "] " << vectest[i] << endl;
-    // }
 
     //testblock end
 
@@ -149,7 +103,6 @@ int factorial(int n)
         int out = 1;
         for(int count = n; count > 0; count--){
             out = out*count;
-            //cout << n << " gives " << out << endl; //debug output
         }
         return out;
     }
@@ -168,7 +121,6 @@ int doublefactorial_odd(int k)
         return 1;
     }
     else if(k == 1){
-        //cout << "feedback" << endl; //debug output
         return 1;
     }
     else{
@@ -199,25 +151,20 @@ int binomialCoeff(int n, int k)
 double overlapGTO(GTO GTO1, GTO GTO2)
 {
     static const double pi = 3.14159265359;
-//    double overlap = 0.0;
     double prefactor = exp(-GTO1.alpha*GTO2.alpha*((GTO1.atompos-GTO2.atompos).squaredNorm())/(GTO1.alpha+GTO2.alpha))*pow(pi/(GTO1.alpha+GTO2.alpha),1.5);
     vec3 rc = (GTO1.alpha*GTO1.atompos + GTO2.alpha*GTO2.atompos)/(GTO1.alpha+GTO2.alpha);
     double Sx = 0;
-    for(int w=0; w<(1+0.5*(GTO1.a+GTO2.a)); w++){ //check limits
+    for(int w=0; w<(1+0.5*(GTO1.a+GTO2.a)); w++){
         Sx = Sx + binomialComposite(w, GTO1.a, GTO2.a, rc[0]-GTO1.atompos[0], rc[0]-GTO2.atompos[0])*doublefactorial_odd(w)/(pow(2*(GTO1.alpha+GTO2.alpha),w));
     }
-    //cout << "Sx: " << Sx << " pre: " << prefactor << endl;
     double Sy = 0;
-    for(int w=0; w<(1+0.5*(GTO1.b+GTO2.b)); w++){ //check limits
+    for(int w=0; w<(1+0.5*(GTO1.b+GTO2.b)); w++){
         Sy = Sy + binomialComposite(w, GTO1.b, GTO2.b, rc[1]-GTO1.atompos[1], rc[1]-GTO2.atompos[1])*doublefactorial_odd(w)/(pow(2*(GTO1.alpha+GTO2.alpha),w));
     }
     double Sz = 0;
-    for(int w=0; w<(1+0.5*(GTO1.c+GTO2.c)); w++){ //check limits
+    for(int w=0; w<(1+0.5*(GTO1.c+GTO2.c)); w++){
         Sz = Sz + binomialComposite(w, GTO1.c, GTO2.c, rc[2]-GTO1.atompos[2], rc[2]-GTO2.atompos[2])*doublefactorial_odd(w)/(pow(2*(GTO1.alpha+GTO2.alpha),w));
     }
-    //double overlap = GTO1.getnorm()*GTO2.getnorm()*prefactor*Sx*Sy*Sz;
-    //cout << "Sy: " << Sy << " Sz: " << Sz << endl;
-    //cout << "norm1: " << GTO1.getnorm() << " norm2: " << GTO2.getnorm() << endl;
     return GTO1.getnorm()*GTO2.getnorm()*prefactor*Sx*Sy*Sz;
 }
 
@@ -225,7 +172,7 @@ double overlapGTO(GTO GTO1, GTO GTO2)
 double binomialComposite(int k, int a1, int a2, double r1, double r2)
 {
     double out = 0;
-    for(int i=max(0,2*k-a2); i<(1+min(2*k,a1)); i++){ //check limits
+    for(int i=max(0,2*k-a2); i<(1+min(2*k,a1)); i++){
         out = out + binomialCoeff(a1, i)*binomialCoeff(a2, 2*k-i)*pow(r1,a1-i)*pow(r2,a2+i-2*k);
     }
     return out;
@@ -262,7 +209,7 @@ double kineticGTO(GTO GTO1, GTO GTO2)
 
 
 //compute nuclear integral of GTO
-double nuclearGTO(GTO GTO1, GTO GTO2, vec3 nucleus)
+double nuclearGTO(GTO GTO1, GTO GTO2, double charge, vec3 nucleus)
 {
     double nuclear;
     nuclear = 1; //temp for compilation
@@ -282,13 +229,10 @@ double fmch(int nu, double x)
         //lower expansion
         for(int i=0; i<51; i++){
             add = pow(x,i)*boost::math::tgamma(m+0.5)/boost::math::tgamma(m+i+1.5);
-            //cout << add << endl;
             if(add>fmchTol){
                 sum = sum + add;
-                //cout << "add" << endl;
             }
             else{
-                //cout << "break" << endl;
                 break;
             }
             if(i==50){
@@ -326,8 +270,8 @@ double fmch(int nu, double x)
 double overlapCGF(CGF CGF1, CGF CGF2)
 {
     double overlap = 0;
-    for(int w=0; w<(1+CGF1.get_size()); w++){
-        for(int v=0; v<(1+CGF2.get_size()); v++){
+    for(int w=0; w<CGF1.get_size(); w++){
+        for(int v=0; v<CGF2.get_size(); v++){
             overlap = overlap + CGF1.coeff[w]*CGF2.coeff[v]*overlapGTO(CGF1.GTOlist[w],CGF1.GTOlist[v]);
         }
     }
@@ -336,8 +280,28 @@ double overlapCGF(CGF CGF1, CGF CGF2)
 
 
 //compute kinetic integral of CGF
+double kineticCGF(CGF CGF1, CGF CGF2)
+{
+    double kinetic = 0;
+    for(int w=0; w<CGF1.get_size(); w++){
+        for(int v=0; v<CGF2.get_size(); v++){
+            kinetic = kinetic + CGF1.coeff[w]*CGF2.coeff[v]*kineticGTO(CGF1.GTOlist[w],CGF1.GTOlist[v]);
+        }
+    }
+    return kinetic;
+}
 
 //compute nuclear integral of CGF
+double nuclearCGF(CGF CGF1, CGF CGF2, double charge, vec3 pos)
+{
+    double nuclear = 0;
+    for(int w=0; w<CGF1.get_size(); w++){
+        for(int v=0; v<CGF2.get_size(); v++){
+            nuclear = nuclear + CGF1.coeff[w]*CGF2.coeff[v]*nuclearGTO(CGF1.GTOlist[w],CGF1.GTOlist[v], charge, pos);
+        }
+    }
+    return nuclear;
+}
 
 //compute 2e-integral of CGF
 
