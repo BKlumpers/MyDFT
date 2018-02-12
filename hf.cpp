@@ -1,6 +1,6 @@
 /*****************************************************************
 
-Basic HF-solver for simple molecules using STO-NG
+Basic closed-shell spin-restricted HF-solver for simple molecules using STO-NG
 
 Author: B. Klumpers (bartkl@live.nl)
 
@@ -63,7 +63,22 @@ public:
     }
 };
 
+//parse output of SCF energy minimisation
+class SCF_E {
+public:
+    double energy; //total energy of the system
+    Eigen::VectorXd orbital_energies; //energies of the molecular orbitals
+    Eigen::MatrixXd C_vector; //coefficient matrix
+    void SCF_result(double Result_energy, Eigen::VectorXd Result_orbital_energies, Eigen::MatrixXd Result_C_vector)
+    {
+        energy = Result_energy;
+        orbital_energies = Result_orbital_energies;
+        C_vector = Result_C_vector;
+    }
+};
+
 //define function calls (part2)
+SCF_E SCF_HF_energy(vector<CGF> AO_list, vector<vec3> pos_list, vector<double> charge_list, vector<int> nelec_list);
 int binomialCoeff(int n, int k);
 double overlapGTO(GTO GTO1, GTO GTO2);
 double binomialComposite(int k, int a1, int a2, double r1, double r2);
@@ -91,6 +106,10 @@ int main() {
     double He_Z = 2; //core charge for Helium
     double C_Z = 6; //core charge for Carbon
     double O_Z = 8; //core charge for Oxygen
+    int H_nelec = 1; //1 electron on Hydrogen
+    int He_nelec = 2; //2 electrons on Helium
+    int C_nelec = 6; //6 electrons on Carbon
+    int O_nelec = 8; //8 electons on Oxygen
     vec3 pos;
     pos << 0,0,0; //position nucleus at origin
     vec3 pos2;
@@ -151,12 +170,40 @@ int main() {
     charge_list.push_back(H_Z);
     charge_list.push_back(H_Z);
 
+    vector<int> nelec_list; //create list of electrons for each atom
+    nelec_list.push_back(H_nelec);
+    nelec_list.push_back(H_nelec);
+
+    SCF_E H2_results; //create output struct for H2 SCF energy minimisation
+    H2_results = SCF_HF_energy(AO_list,pos_list,charge_list, nelec_list); //run SCF energy minimisation and get results
+
+    cout << "Program has ended" << endl;
+    return 0;
+}
+
+//SCF-loop for minimisation of the total energy
+SCF_E SCF_HF_energy(vector<CGF> AO_list, vector<vec3> pos_list, vector<double> charge_list, vector<int> nelec_list)
+{
     //****************************************************************
     //Hartree-Fock energy minimisation:
 
+    SCF_E out; //initialise output struct
+
     if(pos_list.size()!=charge_list.size()){
         cout << endl << "Error: number of nuclei not equal to supplied list of charges" << endl << endl;
-        return 0;
+        return out;
+    }
+
+    //get total number of electrons in the system
+    int nelec = 0;
+    for(int i=0; i<nelec_list.size(); i++) {
+        nelec = nelec + nelec_list[i];
+    }
+
+    if(nelec % 2 != 0){
+        cout << endl << "Error: only closed-shell systems allowed" << endl;
+        cout << "nelec = " << nelec << endl << endl;
+        return out;
     }
 
     //initialise matrices for overlap, kinetic, nuclear and repulsion
@@ -170,7 +217,7 @@ int main() {
             S(i,j) = overlapCGF(AO_list[i], AO_list[j]);
             Kin(i,j) = kineticCGF(AO_list[i], AO_list[j]);
             for(int n=0; n<charge_list.size(); n++){
-                Nucl(i,j) += nuclearCGF(AO_list[i], AO_list[j], charge_list[n], pos_list[n]);
+                Nucl(i,j) = Nucl(i,j) + nuclearCGF(AO_list[i], AO_list[j], charge_list[n], pos_list[n]);
             }
         }
     }
@@ -291,7 +338,7 @@ int main() {
         P_density_new = Eigen::MatrixXd::Zero(AO_list.size(), AO_list.size());
         for(int i=0; i<AO_list.size(); i++) {
             for(int j=0; j<AO_list.size(); j++) {
-                for(int k=0; k<1; k++) {
+                for(int k=0; k<(nelec/2); k++) {
                     P_density_new(i,j) = P_density_new(i,j) + 2.0 * C_vector(i,k) * C_vector(j,k);
                 }
             }
@@ -322,10 +369,10 @@ int main() {
         cout << "coeff: " << endl << C_vector.col(i) << endl << endl;
     }
 
-    cout << "Program has ended" << endl;
-    return 0;
+    //parse results
+    out.SCF_result(energy,orbital_energies,C_vector);
+    return out;
 }
-
 
 //end main codeblock
 //****************************************************************
