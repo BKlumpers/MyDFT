@@ -18,6 +18,7 @@ Testcases for H, He, H2, HeH+ and He2 are included.
 #include "integrals.h"
 #include "orbitals.h"
 #include "solvers.h"
+#include "dft.h"
 
 typedef Eigen::Vector3d vec3; //define vec3 as the Eigen::Vector3d-object
 
@@ -34,26 +35,26 @@ int main() {
     cout << "Initialising" << endl << endl;
 
     //input parameters for single atoms and simple diatomics:
-    double H_Z = 1; //core charge for Hydrogen
-    double He_Z = 2; //core charge for Helium
-    double C_Z = 6; //core charge for Carbon
-    double O_Z = 8; //core charge for Oxygen
+    double H_Z = 1.0; //core charge for Hydrogen
+    double He_Z = 2.0; //core charge for Helium
+    double C_Z = 6.0; //core charge for Carbon
+    double O_Z = 8.0; //core charge for Oxygen
     int H_nelec = 1; //1 electron on Hydrogen
     int He_nelec = 2; //2 electrons on Helium
     int C_nelec = 6; //6 electrons on Carbon
     int O_nelec = 8; //8 electons on Oxygen
     vec3 pos;
-    pos << 0,0,0; //position nucleus at origin
+    pos << 0.0,0.0,0.0; //position nucleus at origin
     vec3 pos2;
-    pos2 << 0,0,1.4; //position second atom 1.4A away from the 1st atom (H-H bond length)
+    pos2 << 0.0,0.0,1.4; //position second atom 1.4A away from the 1st atom (H-H bond length)
     vec3 pos3;
-    pos3 << 0,0,2.116; //position third atom 1.4A away from the 1st atom (C-O bond length in C=O)
+    pos3 << 0.0,0.0,2.116; //position third atom 2.116A away from the 1st atom (C-O bond length in C=O)
 
     //create contracted gaussian function STO-3G for Hydrogen
     CGF cgfH;
-    cgfH.add_gto(0.15432897000000001,3.4252509099999999,0,0,0,pos);
-    cgfH.add_gto(0.53532813999999995,0.62391373000000006,0,0,0,pos);
-    cgfH.add_gto(0.44463454000000002,0.16885539999999999,0,0,0,pos);
+    cgfH.add_gto(0.15432897000000001,3.4252509099999999,0.0,0.0,0.0,pos);
+    cgfH.add_gto(0.53532813999999995,0.62391373000000006,0.0,0.0,0.0,pos);
+    cgfH.add_gto(0.44463454000000002,0.16885539999999999,0.0,0.0,0.0,pos);
     //Compute integrals for Hydrogen (only 1 electron, so no repulsion)
     double H_overlap = overlapCGF(cgfH,cgfH);
     double H_kinetic = kineticCGF(cgfH,cgfH);
@@ -66,9 +67,9 @@ int main() {
 
     //create CGF STO-3G for Helium
     CGF cgfHe;
-    cgfHe.add_gto(0.15432897000000001,6.3624213899999997,0,0,0,pos);
-    cgfHe.add_gto(0.53532813999999995,1.1589229999999999,0,0,0,pos);
-    cgfHe.add_gto(0.44463454000000002,0.31364978999999998,0,0,0,pos);
+    cgfHe.add_gto(0.15432897000000001,6.3624213899999997,0.0,0.0,0.0,pos);
+    cgfHe.add_gto(0.53532813999999995,1.1589229999999999,0.0,0.0,0.0,pos);
+    cgfHe.add_gto(0.44463454000000002,0.31364978999999998,0.0,0.0,0.0,pos);
     //compute integrals for Helium:
     double He_overlap = overlapCGF(cgfHe,cgfHe);
     double He_kinetic = kineticCGF(cgfHe,cgfHe);
@@ -79,7 +80,7 @@ int main() {
     cout << "He_kinetic: " << He_kinetic << endl;
     cout << "He_nuclear: " << He_nuclear << endl;
     cout << "He_repulsion: " << He_repulsion << endl;
-    cout << "He_Energy: " << 2*He_kinetic + 2*He_nuclear + He_repulsion << endl << endl;
+    cout << "He_Energy: " << 2.0*He_kinetic + 2.0*He_nuclear + He_repulsion << endl << endl;
 
     //check SCF for single atom
     // vector<CGF> AO_list1; //create object containing all atomic orbitals
@@ -99,9 +100,9 @@ int main() {
 
     //H2-molecule
     CGF cgfH_2; //create orbitals for second hydrogen atom at pos2
-    cgfH_2.add_gto(0.15432897000000001,3.4252509099999999,0,0,0,pos2);
-    cgfH_2.add_gto(0.53532813999999995,0.62391373000000006,0,0,0,pos2);
-    cgfH_2.add_gto(0.44463454000000002,0.16885539999999999,0,0,0,pos2);
+    cgfH_2.add_gto(0.15432897000000001,3.4252509099999999,0.0,0.0,0.0,pos2);
+    cgfH_2.add_gto(0.53532813999999995,0.62391373000000006,0.0,0.0,0.0,pos2);
+    cgfH_2.add_gto(0.44463454000000002,0.16885539999999999,0.0,0.0,0.0,pos2);
 
     vector<CGF> AO_list; //create object containing all atomic orbitals
     AO_list.push_back(cgfH);
@@ -122,16 +123,19 @@ int main() {
     SCF_E H2_results; //create output struct for H2 SCF energy minimisation
     H2_results = SCF_HF_energy(AO_list,pos_list,charge_list, nelec_list); //run SCF energy minimisation and get results
 
+    SCF_E H2_DFT;
+    //H2_DFT = SCF_DFT_energy(AO_list,pos_list,charge_list,nelec_list);
+
     //visualisation of H2 ground-state orbital
     
     //define the domain which will be visualised
-    double width = 500; //number of gridpoints in the x-direction
-    double height = 500; //number of gridpoints in the z-direction
+    double width = 500.0; //number of gridpoints in the x-direction
+    double height = 500.0; //number of gridpoints in the z-direction
     
     //x runs from -3,+3 (sigma axis)
-    double xmin = -3, xmax = 3;
+    double xmin = -3.0, xmax = 3.0;
     //z runs -3/+3 apart from each atom (internuclear axis)
-    double zmin = -3, zmax = 3+1.4;
+    double zmin = -3.0, zmax = 3.0+1.4;
 
     //write image of groundstate MO for H2 to file
     if(visual){
@@ -143,11 +147,11 @@ int main() {
 
     //position hydrogen appropriate distance from helium:
     vec3 pos_HeHp;
-    pos_HeHp << 0,0,0.772;
+    pos_HeHp << 0.0,0.0,0.772;
     CGF cgfH_He; //create orbitals for second hydrogen atom at pos2
-    cgfH_He.add_gto(0.15432897000000001,3.4252509099999999,0,0,0,pos_HeHp);
-    cgfH_He.add_gto(0.53532813999999995,0.62391373000000006,0,0,0,pos_HeHp);
-    cgfH_He.add_gto(0.44463454000000002,0.16885539999999999,0,0,0,pos_HeHp);
+    cgfH_He.add_gto(0.15432897000000001,3.4252509099999999,0.0,0.0,0.0,pos_HeHp);
+    cgfH_He.add_gto(0.53532813999999995,0.62391373000000006,0.0,0.0,0.0,pos_HeHp);
+    cgfH_He.add_gto(0.44463454000000002,0.16885539999999999,0.0,0.0,0.0,pos_HeHp);
 
     vector<CGF> AO_list_HeHp; //create object containing all atomic orbitals
     AO_list_HeHp.push_back(cgfHe);
@@ -167,11 +171,14 @@ int main() {
 
     //perform energy minimisation for HeH+:
     SCF_E HeHp_results;
-    HeHp_results = SCF_HF_energy(AO_list_HeHp,pos_list_HeHp,charge_list_HeHp,nelec_list_HeHp);
+    //HeHp_results = SCF_HF_energy(AO_list_HeHp,pos_list_HeHp,charge_list_HeHp,nelec_list_HeHp);
+
+    SCF_E HeHp_DFT;
+    //HeHp_DFT = SCF_DFT_energy(AO_list_HeHp,pos_list_HeHp,charge_list_HeHp,nelec_list_HeHp);
 
     if(visual){
-        zmax = 3+0.772; //rescale z-axis to HeH+ bond length, then write image of ground-state MO
-        plot2D("HeHp.txt",height,width,xmin,xmax,zmin,zmax,AO_list_HeHp,HeHp_results.C_vector);
+        zmax = 3.0+0.772; //rescale z-axis to HeH+ bond length, then write image of ground-state MO
+        //plot2D("HeHp.txt",height,width,xmin,xmax,zmin,zmax,AO_list_HeHp,HeHp_results.C_vector);
     }
 
     //He2 molecule
@@ -179,11 +186,11 @@ int main() {
 
     //position second helium appropriate distance from first helium:
     vec3 pos_He2;
-    pos_He2 << 0,0,5.2;
+    pos_He2 << 0.0,0.0,5.2;
     CGF cgfHe2; //create orbitals for second helium atom at pos2
-    cgfHe2.add_gto(0.15432897000000001,6.3624213899999997,0,0,0,pos_He2);
-    cgfHe2.add_gto(0.53532813999999995,1.1589229999999999,0,0,0,pos_He2);
-    cgfHe2.add_gto(0.44463454000000002,0.31364978999999998,0,0,0,pos_He2);
+    cgfHe2.add_gto(0.15432897000000001,6.3624213899999997,0.0,0.0,0.0,pos_He2);
+    cgfHe2.add_gto(0.53532813999999995,1.1589229999999999,0.0,0.0,0.0,pos_He2);
+    cgfHe2.add_gto(0.44463454000000002,0.31364978999999998,0.0,0.0,0.0,pos_He2);
 
     vector<CGF> AO_list_He2; //create object containing all atomic orbitals
     AO_list_He2.push_back(cgfHe);
@@ -203,11 +210,105 @@ int main() {
 
     //perform energy minimisation for He2:
     SCF_E He2_results;
-    He2_results = SCF_HF_energy(AO_list_He2,pos_list_He2,charge_list_He2,nelec_list_He2);
+    //He2_results = SCF_HF_energy(AO_list_He2,pos_list_He2,charge_list_He2,nelec_list_He2);
+
+    SCF_E He2_DFT;
+    //He2_DFT = SCF_DFT_energy(AO_list_He2,pos_list_He2,charge_list_He2,nelec_list_He2);
 
     if(visual){
-        zmax = 3+5.2; //rescale to He2 bond length, then write image of ground-state MO to file
-        plot2D("He2.txt",height,width,xmin,xmax,zmin,zmax,AO_list_He2,He2_results.C_vector);
+        zmax = 3.0+5.2; //rescale to He2 bond length, then write image of ground-state MO to file
+        //plot2D("He2.txt",height,width,xmin,xmax,zmin,zmax,AO_list_He2,He2_results.C_vector);
+    }
+
+    //CO molecule
+    cout << "Testcase for CO: " << endl << endl;
+
+    //position second helium appropriate distance from first helium:
+    CGF cgfC_1S;
+    cgfC_1S.add_gto(0.154329,71.616837,0.0,0.0,0.0,pos);
+    cgfC_1S.add_gto(0.535328,13.045096,0.0,0.0,0.0,pos);
+    cgfC_1S.add_gto(0.444635,3.530512,0.0,0.0,0.0,pos);
+
+    CGF cgfC_2S;
+    cgfC_2S.add_gto(-0.099967,2.941249,0.0,0.0,0.0,pos);
+    cgfC_2S.add_gto(0.399513,0.683483,0.0,0.0,0.0,pos);
+    cgfC_2S.add_gto(0.700115,0.222290,0.0,0.0,0.0,pos);
+    
+    CGF cgfC_2PX;
+    cgfC_2PX.add_gto(0.155916,2.941249,1.0,0.0,0.0,pos);
+    cgfC_2PX.add_gto(0.607684,0.683483,1.0,0.0,0.0,pos);
+    cgfC_2PX.add_gto(0.391957,0.222290,1.0,0.0,0.0,pos);
+
+    CGF cgfC_2PY;
+    cgfC_2PY.add_gto(0.155916,2.941249,0.0,1.0,0.0,pos);
+    cgfC_2PY.add_gto(0.607684,0.683483,0.0,1.0,0.0,pos);
+    cgfC_2PY.add_gto(0.391957,0.222290,0.0,1.0,0.0,pos);
+
+    CGF cgfC_2PZ;
+    cgfC_2PZ.add_gto(0.155916,2.941249,0.0,0.0,1.0,pos);
+    cgfC_2PZ.add_gto(0.607684,0.683483,0.0,0.0,1.0,pos);
+    cgfC_2PZ.add_gto(0.391957,0.222290,0.0,0.0,1.0,pos);
+    
+    CGF cgfO_1S;
+    cgfO_1S.add_gto(0.154329,130.709320,0.0,0.0,0.0,pos3);
+    cgfO_1S.add_gto(0.535328,23.808861,0.0,0.0,0.0,pos3);
+    cgfO_1S.add_gto(0.444635,6.443608,0.0,0.0,0.0,pos3);
+    
+    CGF cgfO_2S;
+    cgfO_2S.add_gto(-0.099967,5.033151,0.0,0.0,0.0,pos3);
+    cgfO_2S.add_gto(0.399513,1.169596,0.0,0.0,0.0,pos3);
+    cgfO_2S.add_gto(0.700115,0.380389,0.0,0.0,0.0,pos3);
+    
+    CGF cgfO_2PX;
+    cgfO_2PX.add_gto(0.155916,5.033151,1.0,0.0,0.0,pos3);
+    cgfO_2PX.add_gto(0.607684,1.169596,1.0,0.0,0.0,pos3);
+    cgfO_2PX.add_gto(0.391957,0.380389,1.0,0.0,0.0,pos3);
+    
+    CGF cgfO_2PY;
+    cgfO_2PY.add_gto(0.155916,5.033151,0.0,1.0,0.0,pos3);
+    cgfO_2PY.add_gto(0.607684,1.169596,0.0,1.0,0.0,pos3);
+    cgfO_2PY.add_gto(0.391957,0.380389,0.0,1.0,0.0,pos3);
+    
+    CGF cgfO_2PZ;
+    cgfO_2PZ.add_gto(0.155916,5.033151,0.0,0.0,1.0,pos3);
+    cgfO_2PZ.add_gto(0.607684,1.169596,0.0,0.0,1.0,pos3);
+    cgfO_2PZ.add_gto(0.391957,0.380389,0.0,0.0,1.0,pos3);
+
+    vector<CGF> AO_list_CO; //create object containing all atomic orbitals
+    AO_list_CO.push_back(cgfC_1S);
+    AO_list_CO.push_back(cgfC_2S);
+    AO_list_CO.push_back(cgfC_2PX);
+    AO_list_CO.push_back(cgfC_2PY);
+    AO_list_CO.push_back(cgfC_2PZ);
+    AO_list_CO.push_back(cgfO_1S);
+    AO_list_CO.push_back(cgfO_2S);
+    AO_list_CO.push_back(cgfO_2PX);
+    AO_list_CO.push_back(cgfO_2PY);
+    AO_list_CO.push_back(cgfO_2PZ);
+
+    vector<vec3> pos_list_CO; //create list of nucleic positions
+    pos_list_CO.push_back(pos);
+    pos_list_CO.push_back(pos3);
+
+    vector<double> charge_list_CO; //create list of nucleic charges
+    charge_list_CO.push_back(C_Z);
+    charge_list_CO.push_back(O_Z);
+
+    vector<int> nelec_list_CO; //create list of electrons for each atom
+    nelec_list_CO.push_back(C_nelec);
+    nelec_list_CO.push_back(O_nelec);
+
+    //perform energy minimisation for He2:
+    SCF_E CO_results;
+    cout << "CO_start: " << endl;
+    CO_results = SCF_HF_energy(AO_list_CO,pos_list_CO,charge_list_CO,nelec_list_CO);
+
+    SCF_E CO_DFT;
+    //CO_DFT = SCF_DFT_energy(AO_list_CO,pos_list_CO,charge_list_CO,nelec_list_CO);
+
+    if(visual){
+        zmax = 3.0+2.116; //rescale to He2 bond length, then write image of ground-state MO to file
+        //plot2D("CO.txt",height,width,xmin,xmax,zmin,zmax,AO_list_CO,CO_results.C_vector);
     }
 
     cout << "Program has ended" << endl;
@@ -229,7 +330,7 @@ void plot2D(char const title[], double height, double width, double xmin, double
     //
     vec3 origin; //mesh-point centre
     double xpos,ypos,zpos; //initialise position vector components
-    ypos = 0; //visualise the plane corresponding to y=0
+    ypos = 0.0; //visualise the plane corresponding to y=0
     int orbital_vis = 0; //visualise ground-state orbital
     Eigen::MatrixXd image = Eigen::MatrixXd::Zero(width+1,height+1); //initialise matrix storing pixels
 

@@ -27,17 +27,17 @@ using namespace std;
 //Gaussian type orbital
 class GTO {
 private:
-    double norm = 0;            //storage for the normalisation constant
+    double norm = 0.0;            //storage for the normalisation constant
 public:
     double alpha;           //exponent factor
     int a,b,c;              //angular momentum components in x,y,z respectively
     vec3 atompos;           //atomic coordinates of the nucleus
     double getnorm()
     {
-        if(norm==0){
+        if(norm==0.0){
             static const double pi = 3.14159265359;
             //compute normalisation constant, only if norm was not computed previously
-            norm = sqrt(pow(2*alpha/pi, 1.5)*pow(4*alpha, a + b + c)/(doublefactorial_odd(a)*doublefactorial_odd(b)*doublefactorial_odd(c)));
+            norm = sqrt(pow(2.0*alpha/pi, 1.5)*pow(4.0*alpha, a + b + c)/(doublefactorial_odd(a)*doublefactorial_odd(b)*doublefactorial_odd(c)));
         }
         return norm;
     }
@@ -71,7 +71,7 @@ public:
     double getvalue(const vec3& pos)
     {
         //get expectation value of CGF at r = pos
-        double out = 0;
+        double out = 0.0;
         for(int i=0; i<get_size(); i++)
         {
             out = out + coeff[i]*GTOlist[i].getvalue(pos);

@@ -40,17 +40,17 @@ SCF_E SCF_HF_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const vec
     }
 
     if(nelec % 2 != 0){
-        cout << endl << "Error: only closed-shell systems allowed" << endl;
+        cout << endl << "Error: only spin-restricted systems allowed" << endl;
         cout << "nelec = " << nelec << endl << endl;
         return out;
     }
 
-    //initialise matrices for overlap, kinetic, nuclear and repulsion
+    //initialise matrices for overlap, kinetic and nuclear Fock-matrix components
     Eigen::MatrixXd S = Eigen::MatrixXd::Zero(AO_list.size(), AO_list.size()); //overlap_matrix
     Eigen::MatrixXd Kin = Eigen::MatrixXd::Zero(AO_list.size(), AO_list.size()); //kinetic_matrix
     Eigen::MatrixXd Nucl = Eigen::MatrixXd::Zero(AO_list.size(), AO_list.size()); //nuclear_matrix
 
-    //calculate respective 1-integrals: overlap, kinetic and nuclear
+    //calculate respective 1e-integrals: overlap, kinetic and nuclear
     for(int i=0; i<AO_list.size(); i++) {
         for(int j=0; j<AO_list.size(); j++) {
             S(i,j) = overlapCGF(AO_list[i], AO_list[j]);
@@ -66,7 +66,7 @@ SCF_E SCF_HF_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const vec
     //calculate all unique 2e-integral using index sorting:
     //
     //vector of unique 2e-integrals, -1 as a reference value for non-calculated integral
-    vector<double> Rep(two_electronSort(AO_list.size(),AO_list.size(),AO_list.size(),AO_list.size()), -1);
+    vector<double> Rep(two_electronSort(AO_list.size(),AO_list.size(),AO_list.size(),AO_list.size()), -1.0);
     int ij,kl,current_index;
     for(int i=0; i<AO_list.size(); i++) {
         for(int j=0; j<AO_list.size(); j++) {
@@ -85,7 +85,7 @@ SCF_E SCF_HF_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const vec
                 }
             }
         }
-    }    
+    }
 
     //perform canonical diagonalisation:
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(S);
@@ -110,12 +110,12 @@ SCF_E SCF_HF_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const vec
     //optimisation parameters:
     static const double alpha = 0.5; //mixing parameter for updating density
     static const double TolEnergy = 1e-5; //tolerance for energy convergence
-    static const double loop_max = 100; //maximum number of iterations
+    static const int loop_max = 100; //maximum number of iterations
 
     //initialise update parameters:
     double energy_old = 0.0; //energy obtained from previous iteration for comparison
     if(pos_list.size() == 1){ //correct update for monoatomics
-        energy_old = 1;
+        energy_old = 1.0;
     }
     double energy_difference = 1.0; //difference between new and old energy
     int loop_counter = 0; //initialise counter
@@ -211,192 +211,9 @@ SCF_E SCF_HF_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const vec
         cout << "coeff: " << endl << C_vector.col(i) << endl << endl;
     }
 
-    //testblock for Density Functional Theory:
-    //currently (incorrectly) assumes HF-SCF density matrix
-    //will be moved to seperate function
-
-    //compute number of electrons from density
-    //N = sum(P*S)
-    double Ndel = 0;
-    for(int i=0; i<AO_list.size(); i++){
-        for(int j=0; j<AO_list.size(); j++){
-            Ndel += P_density(i,j)*S(i,j);
-        }
-    }
-    cout << "Ndel: " << Ndel << endl;
-
-    double NPdel = 0; //compute nuclear attraction from density
-    for(int i=0; i<AO_list.size(); i++){
-        for(int j=0; j<AO_list.size(); j++){
-            NPdel += P_density(i,j)*Nucl(i,j);
-        }
-    }
-    cout << "NPdel: " << NPdel << endl;
-
-    double NPkin = 0; //isolate kinetic energy
-    for(int i=0; i<AO_list.size(); i++){
-        for(int j=0; j<AO_list.size(); j++){
-            NPkin += P_density(i,j)*Kin(i,j);
-        }
-    }
-    cout << "NPkin: " << NPkin << endl;
-
-    int index2e,in; //Calculate two-electron matrix from density:
-    double D_G_two_electron = 0;
-    double K_check = 0;
-    for(int i=0; i<AO_list.size(); i++) {
-        for(int j=0; j<AO_list.size(); j++) {
-            for(int k=0; k<AO_list.size(); k++) {
-                for(int l=0; l<AO_list.size(); l++) {
-                    index2e = two_electronSort(i,j,l,k);
-                    in = two_electronSort(i,k,l,j);
-                    D_G_two_electron += 0.5 * P_density(i,j) * P_density(k,l) * Rep[index2e];
-                    K_check += -0.5 * P_density(i,j) * P_density(k,l) * 0.5 * Rep[in];
-                }
-            }
-        }
-    }
-    cout << "DG: " << D_G_two_electron << endl;
-    cout << "K_XC: " << K_check << endl;
-
-    double NNrep = 0;//get nuclear repulsion
-    for(int i=0; i<charge_list.size(); i++){
-        for(int j=0; j<charge_list.size(); j++){
-            if(j>i){
-                NNrep += charge_list[i]*charge_list[j]/(pos_list[i]-pos_list[j]).norm();
-            }
-        }
-    }
-    cout << "NNrep: " << NNrep << endl;
-
-    //really inefficient grid (Hardcoded)
-    static const double Nstep = 100; //have integral run in 3d{x,y,z} with Nstep+1 discrete steps along each axis
-    static const int steps = int(Nstep) + 1; //turn loop-counter into int to support openmp
-    static const double SingularTol = 1e-4; //tolerance for identifying singularities
-    double Density = 0; //hold value of the local electron density
-    double gridsum = 0; //initialise value of the nuclear integral
-    double Nsum = 0; //initialise value of the population integral
-    double Jsum = 0; //initialise value of the electronic repulsion integral
-    double Exchange = 0; //initialise value of the exchange energy integral
-    double Correlation = 0; //initialise value of the correlation energy integral
-    //define lower and upper bounds for x-axis
-    double limset = 5;
-    double xmin = -limset, xmax = limset;
-    //define lower and upper bounds for y-axis
-    double ymin = -limset, ymax = limset;
-    //define lower and upper bounds for z-axis
-    double zmin = -limset, zmax = limset;
-
-    double dV = (xmax-xmin)*(ymax-ymin)*(zmax-zmin)/pow(Nstep,3); //mesh-unit volume
-
-    double xpos,ypos,zpos;
-    vec3 origin; //mesh-point centre
-
-    double xpos2, ypos2, zpos2;
-    vec3 origin2; //mesh-point centre for second integral for electronic repulsion
-
-    double gridDenom = 0; //nuclear integral operator
-    double JDenom = 0; //two electron integral operator
-
-    //commence discretised integration
-    cout << endl << "Commencing density-based nuclear integration" << endl;
-    cout << "This may take a while..." << endl;
-
-    for(int i=0; i<steps; i++){
-        xpos = xmin + i*(xmax-xmin)/Nstep;
-        for(int j=0; j<steps; j++){
-            ypos = ymin + j*(ymax-ymin)/Nstep;
-            for(int k=0; k<steps; k++){
-                zpos = zmin + k*(zmax-zmin)/Nstep;
-                origin << xpos,ypos,zpos;
-                Density = density(origin, P_density, AO_list);
-                for(int centre=0; centre<charge_list.size(); centre++){ //loop over each nucleus
-                    gridDenom = (origin-pos_list[centre]).norm();
-                    if(gridDenom > SingularTol){ //avoid singularities
-                        gridsum += -charge_list[centre]*dV*Density/gridDenom; //add normalised local value to nuclear integral
-                    }
-                }
-                Nsum += dV*Density; //add normalised local value to population integral
-                Exchange += dV*exchange_Dirac(Density); //Dirac exchange functional
-                Correlation += dV*correlation_VWN(Density); //Vosko-Wilk-Nusair correlation functional
-                //evaluate second integral in the two-electron integration
-                //currenty commented since for Nstep = 20; comp. time = ca. 2hrs
-                //since above loop = ca. 0.85sec for 8000 evaluations -> 8000*8000 evaluations for current loop -> 8000*0.85sec = ca. 2hrs
-                // for(int i2=0; i2<steps; i2++){
-                //     xpos2 = xmin + i2*(xmax-xmin)/Nstep;
-                //     for(int j2=0; j2<steps; j2++){
-                //         ypos2 = ymin + j2*(ymax-ymin)/Nstep;
-                //         for(int k2=0; k2<steps; k2++){
-                //             zpos2 = zmin + k2*(zmax-zmin)/Nstep;
-                //             origin2 << xpos2,ypos2,zpos2;
-                //             JDenom = (origin-origin2).norm();
-                //             if(JDenom > SingularTol){ //avoid singularities
-                //                 Jsum += 0.5*dV*dV*Density*density(origin2, P_density, AO_list)/JDenom;
-                //             }
-                //         }
-                //     }
-                // }
-            }
-        }
-    }
-    //output results and compare HF with DFT:
-    cout << "gridsum: " << gridsum << endl;
-    cout << "Nsum: " << Nsum << endl;
-    //cout << "Jsum: " << Jsum << endl; //currently commented since not computed in above loop
-    cout << "Exchange: " << Exchange << endl;
-    cout << "Correlation: " << Correlation << endl;
-    double E_DFT = NPkin + D_G_two_electron + Exchange + Correlation + NNrep + NPdel;
-    double EHF = NPkin + D_G_two_electron + NPdel + NNrep + K_check;
-    cout << endl << "E_DFT: " << E_DFT << " vs(HF): " << EHF << endl << endl;
-
     //parse results
     out.SCF_result(energy,orbital_energies,C_vector);
     return out;
-}
-
-
-//****************************************************************
-//Density Functional Theory:
-
-
-//compute value for the electron-density at a certain point {pos}
-//given the density matrix {Pmatrix} and the basis set {AO_list}
-double density(const vec3& pos, const Eigen::MatrixXd& Pmatrix, vector<CGF> AO_list)
-{
-    double density_value = 0;
-    for(int i=0; i<Pmatrix.rows(); i++){
-        for(int j=0; j<Pmatrix.rows(); j++){
-            density_value += Pmatrix(i,j)*AO_list[i].getvalue(pos)*AO_list[j].getvalue(pos);
-        }
-    }
-    return density_value;
-}
-
-//calculate localised exchange-part of the DFT exchange-correlation term
-//according to the Dirac expression for a Homogeneous Electron Gas (LDA)
-double exchange_Dirac(double Density)
-{
-    static const double pi = 3.14159265359;
-    static const double prefactor = -0.75*pow(3/pi,1/3);
-    return prefactor*pow(Density,4/3);
-}
-
-//calculate correlation-part of the DFT exchange-correlation term
-//according to the Vosko-Wilk-Nusair correlation functional
-double correlation_VWN(double Density)
-{
-    static const double pi = 3.14159265359;
-    //Vosko-Wilk-Nusair V parameters
-    static const double A_p = 0.0621814;
-    static const double x0_p = -0.10498;
-    static const double b_p = 3.72744;
-    static const double c_p = 12.9352;
-    double x_small = pow(3/(4*pi*Density),1/6); //x = sqrt(r0); r0 = (3/(4*pi*Density))^1/3
-    double X_large_p = x_small*x_small + x_small*b_p + c_p;
-    double Q_p = sqrt(4*c_p - b_p*b_p);
-    double Fx_p = log(pow(x_small-x0_p,2)/X_large_p) + 2*(b_p+2*x0_p)*atan(Q_p/(b_p+2*x_small))/Q_p;
-    //multiply exchange potential with Density to get local value of exchange energy, prefactor 0.5 to convert from Rydberg to Hartree
-    return 0.5*A_p*(    log(x_small*x_small/X_large_p) + 2*b_p*atan(Q_p/(2*x_small+b_p))/Q_p - b_p*x0_p*Fx_p/(x0_p*x0_p + x0_p*b_p + c_p)    )*Density;
 }
 
 //End of file

@@ -41,8 +41,5 @@ public:
 
 //define function calls
 SCF_E SCF_HF_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const vector<double>& charge_list, const vector<int>& nelec_list);
-double density(const vec3& pos, const Eigen::MatrixXd& Pmatrix, vector<CGF> AO_list);
-double exchange_Dirac(double Density);
-double correlation_VWN(double Density);
 
 #endif //_SOLVERS_H

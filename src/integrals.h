@@ -27,6 +27,7 @@ using namespace std;
 
 double overlapGTO(GTO GTO1, GTO GTO2);
 double binomialComposite(int k, int a1, int a2, double r1, double r2);
+double binomAlt(int j, int a1, int a2, double r1, double r2);
 double kineticGTO(GTO GTO1, GTO GTO2);
 double nuclearGTO(GTO GTO1, GTO GTO2, double charge, const vec3& nucleus);
 double nuclearComponent(int l, int r, int i, int a1, int a2, double PA, double PB, double PC, double alpha_c);
