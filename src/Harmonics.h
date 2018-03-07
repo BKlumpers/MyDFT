@@ -13,19 +13,19 @@ Includes testcases for: H, He, H2, HeH+, He2, CO, and H2O.
 
 *****************************************************************/
 
-#ifndef _PRELIM_MATH_H
-#define _PRELIM_MATH_H
+#ifndef _HARMONICS_H
+#define _HARMONICS_H
 
 #include <iostream>
 #include <cmath>
+#include <vector>
+#include <Eigen/Dense>
+#include <boost/math/special_functions/spherical_harmonic.hpp>
+
+typedef Eigen::Vector3d vec3; //define vec3 as the Eigen::Vector3d-object
 
 using namespace std;
 
-const bool EFLAG = false; //turn mathematical errors off
+double HarmonicReal(int l, int m, vec3 gridpoint);
 
-//define function calls
-int factorial(int n);
-int doublefactorial_odd(int k);
-int binomialCoeff(int n, int k);
-
-#endif //_PRELIM_MATH_H
+#endif //_HARMONICS_H

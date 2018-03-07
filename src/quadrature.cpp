@@ -2,13 +2,14 @@
 
 Basic closed-shell spin-restricted DFT-solver for simple molecules using STO-NG
 
-Authors: B. Klumpers (bartkl@live.nl)
+Authors: B. Klumpers
 		 I.A.W. Filot
 
 Published under GNU General Public License 3.0
+Source code available at: https://github.com/BKlumpers/dft
 
 Allows for SCF-computation of molecular energies for simple molecules.
-Testcases for H, He, H2, HeH+, He2 and CO are included.
+Includes testcases for: H, He, H2, HeH+, He2, CO, and H2O.
 
 *****************************************************************/
 
@@ -41,7 +42,7 @@ grid make_grid(const vector<vec3>& pos_list, const vector<int>& atnum_list, int 
     }
 
 	//initialise grid-object
-	grid Grid(pos_list.size(), radial_points, angular_points, Basis);
+	grid Grid(pos_list, radial_points, angular_points, Basis, lebedev_order);
 
 	if(pos_list.size() != atnum_list.size()){
 		cout << "List of atomic numbers does not match number of nuclei provided." << endl;
@@ -55,7 +56,7 @@ grid make_grid(const vector<vec3>& pos_list, const vector<int>& atnum_list, int 
 
 	//use Gauss-Chebyshev quadrature to generate the gridpoints
 	for(int atom=0; atom<pos_list.size(); atom++){ //loop across all atoms
-		//cout << "atom: " << atom << endl;
+		
 		//****************************************************************
 		//generate atomic grid:
 
@@ -67,10 +68,10 @@ grid make_grid(const vector<vec3>& pos_list, const vector<int>& atnum_list, int 
 
 		//loop across all radial points
 		for(int j=1; j<radial_points+1; j++){ //start index at 1 to avoid singularities in the radial coordinate
-			//cout << "rpnt: " << j << endl;
+			
 			//z_std = j/(radial_points+1); //get z-coordinate of the gridpoint in the transformed Gauss-Chebyshev domain
 			x_std = cos(pi*j/(radial_points+1)); //get x-coordinate of the gridpoint in the standard Gauss-Chebyshev domain
-			r_point = (1.0 + x_std)/(1.0 - x_std); //transform x-coordinate back to radial coordinate Bragg_factor*
+			r_point = (1.0 + x_std)/(1.0 - x_std); //transform x-coordinate back to radial coordinate ------------- Bragg_factor* ?
 			//compute Chebyshev-weight:
 			Chebyshev = pow(sin(pi*j/(radial_points+1)),2.0) * (pi/(radial_points+1)); //get weight associated with the Gauss-Chebyshev discretisation
 			//convert functional form of the Gauss-Chebyshev integral of the second kind:
@@ -100,15 +101,11 @@ grid make_grid(const vector<vec3>& pos_list, const vector<int>& atnum_list, int 
 		cout << "commencing Gauss: " << endl;
 		//loop across all gridpoints, for every nuclei, to get the Gaussian weights:
 	    for(int rpnt=0; rpnt<radial_points; rpnt++){ //loop across radial points
-	    	//cout << "rpnt: " << rpnt << endl;
 	    	for(int apnt=0; apnt<angular_points; apnt++){ //loop across angular points
 	    		norm = 0.0; //reset norm
 	    		for(int i=0; i<atnum_list.size(); i++){ //loop across all atoms
-	    			//cout << "atnum: " << i << endl;
-	    			//cout << "set: " << rpnt << "   " << apnt << "    " << atom << endl;
 					Gauss = Gauss_weight(i, pos_list, atnum_list, Grid.get_gridpoint(atom, rpnt, apnt)); //compute term of the Gaussian weight -> P_A
 					norm += Gauss; //sum over all weights to get normalisation factor
-					//cout << "atnum end" << endl;
 					if(i == atom){
 						nucleic_weight = Gauss; //retrieve Gaussian weight associated with the current atom -> P_n
 					}
@@ -117,7 +114,6 @@ grid make_grid(const vector<vec3>& pos_list, const vector<int>& atnum_list, int 
 	    		//map this weight to the grid
 	    		if(abs(norm) > 1e-5){ //avoid singularities
 	    			Grid.Gauss_weight(atom, rpnt, apnt, nucleic_weight/norm);
-	    			//cout << "Pn: " << nucleic_weight/norm << endl;
 	    		}
 	    	}
 	    }
@@ -205,10 +201,10 @@ double SlaterBragg(int atnum)
 	//switch for assigning atomic radius to corresponding atomic number
 	switch(atnum){
 		case 1: //H
-		radius = 0.25; //Becke recommends 0.35 ipv 0.25, evaluate performance before updating case 1 and default
+		radius = 0.35; //Becke recommends 0.35 ipv 0.25, evaluate performance before updating case 1 and default
 		break;
 		case 2: //He
-		radius = 0.25;
+		radius = 0.28;
 		break;
 		case 3: //Li
 		radius = 1.45;
@@ -237,7 +233,7 @@ double SlaterBragg(int atnum)
 		default:
 		cout << "Atomic Number: " << atnum << " , currently not implemented or unknown." << endl;
 		cout << "Defaulting to Hydrogen." << endl;
-		radius = 0.25;
+		radius = 0.35;
 		break;
 	}
 	return radius;

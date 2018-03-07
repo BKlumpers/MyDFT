@@ -1,13 +1,15 @@
 /*****************************************************************
 
-Basic closed-shell spin-restricted HF-solver for simple molecules using STO-NG
+Basic closed-shell spin-restricted DFT-solver for simple molecules using STO-NG
 
-Author: B. Klumpers (bartkl@live.nl)
+Authors: B. Klumpers
+         I.A.W. Filot
 
 Published under GNU General Public License 3.0
+Source code available at: https://github.com/BKlumpers/dft
 
 Allows for SCF-computation of molecular energies for simple molecules.
-Testcases for H, He, H2, HeH+ and He2 are included.
+Includes testcases for: H, He, H2, HeH+, He2, CO, and H2O.
 
 *****************************************************************/
 
@@ -199,103 +201,101 @@ double two_electronGTO(GTO GTO1, GTO GTO2, GTO GTO3, GTO GTO4)
     vec3 rq = (GTO3.alpha*GTO3.atompos + GTO4.alpha*GTO4.atompos)/gamma34;
     double Rpq_2 = (rp-rq).squaredNorm();
     //x,y,z-components of the 2e-integral:
-    double Bx;
-    double By;
-    double Bz;
-    //15-fold summation for the 2e-integral:
-    for(int l=0;l<(1+GTO1.a+GTO2.a); l++){
-        for(int r=0; r<(1+l/2); r++){
-            for(int l2=0; l2<(1+GTO3.a+GTO4.a); l2++){
-                for(int r2=0; r2<(1+l2/2); r2++){
-                    for(int i=0; i<(1-r-r2+(l+l2)/2); i++){
-                        Bx=electricComponent(l,l2,r,r2,i,GTO1.a,GTO2.a,GTO3.a,GTO4.a,GTO1.atompos[0],GTO2.atompos[0],GTO3.atompos[0],GTO4.atompos[0],rp[0],rq[0],gamma12,gamma34,delta);
-                        for(int m=0; m<(1+GTO1.b+GTO2.b); m++){
-                            for(int s=0; s<(1+m/2); s++){
-                                for(int m2=0; m2<(1+GTO3.b+GTO4.b); m2++){
-                                    for(int s2=0; s2<(1+m2/2); s2++){
-                                        for(int j=0; j<(1-s-s2+(m+m2)/2); j++){
-                                            By=electricComponent(m,m2,s,s2,j,GTO1.b,GTO2.b,GTO3.b,GTO4.b,GTO1.atompos[1],GTO2.atompos[1],GTO3.atompos[1],GTO4.atompos[1],rp[1],rq[1],gamma12,gamma34,delta);
-                                            for(int n=0; n<(1+GTO1.c+GTO2.c); n++){
-                                                for(int t=0; t<(1+n/2); t++){
-                                                    for(int n2=0; n2<(1+GTO3.c+GTO4.c); n2++){
-                                                        for(int t2=0; t2<(1+n2/2); t2++){
-                                                            for(int k=0; k<(1-t-t2+(n+n2)/2); k++){
-                                                                Bz=electricComponent(n,n2,t,t2,k,GTO1.c,GTO2.c,GTO3.c,GTO4.c,GTO1.atompos[2],GTO2.atompos[2],GTO3.atompos[2],GTO4.atompos[2],rp[2],rq[2],gamma12,gamma34,delta);
-                                                                electric += Bx*By*Bz*fmch(l+l2+m+m2+n+n2-2*(r+r2+s+s2+t+t2)-i-j-k,Rpq_2/(4.0*delta));
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+    // double Bx;
+    // double By;
+    // double Bz;
+    // //15-fold summation for the 2e-integral:
+    // for(int l=0;l<(1+GTO1.a+GTO2.a); l++){
+    //     for(int r=0; r<(1+l/2); r++){
+    //         for(int l2=0; l2<(1+GTO3.a+GTO4.a); l2++){
+    //             for(int r2=0; r2<(1+l2/2); r2++){
+    //                 for(int i=0; i<(1-r-r2+(l+l2)/2); i++){
+    //                     Bx=electricComponent(l,l2,r,r2,i,GTO1.a,GTO2.a,GTO3.a,GTO4.a,GTO1.atompos[0],GTO2.atompos[0],GTO3.atompos[0],GTO4.atompos[0],rp[0],rq[0],gamma12,gamma34,delta);
+    //                     for(int m=0; m<(1+GTO1.b+GTO2.b); m++){
+    //                         for(int s=0; s<(1+m/2); s++){
+    //                             for(int m2=0; m2<(1+GTO3.b+GTO4.b); m2++){
+    //                                 for(int s2=0; s2<(1+m2/2); s2++){
+    //                                     for(int j=0; j<(1-s-s2+(m+m2)/2); j++){
+    //                                         By=electricComponent(m,m2,s,s2,j,GTO1.b,GTO2.b,GTO3.b,GTO4.b,GTO1.atompos[1],GTO2.atompos[1],GTO3.atompos[1],GTO4.atompos[1],rp[1],rq[1],gamma12,gamma34,delta);
+    //                                         for(int n=0; n<(1+GTO1.c+GTO2.c); n++){
+    //                                             for(int t=0; t<(1+n/2); t++){
+    //                                                 for(int n2=0; n2<(1+GTO3.c+GTO4.c); n2++){
+    //                                                     for(int t2=0; t2<(1+n2/2); t2++){
+    //                                                         for(int k=0; k<(1-t-t2+(n+n2)/2); k++){
+    //                                                             Bz=electricComponent(n,n2,t,t2,k,GTO1.c,GTO2.c,GTO3.c,GTO4.c,GTO1.atompos[2],GTO2.atompos[2],GTO3.atompos[2],GTO4.atompos[2],rp[2],rq[2],gamma12,gamma34,delta);
+    //                                                             electric += Bx*By*Bz*fmch(l+l2+m+m2+n+n2-2*(r+r2+s+s2+t+t2)-i-j-k,Rpq_2/(4.0*delta));
+    //                                                         }
+    //                                                     }
+    //                                                 }
+    //                                             }
+    //                                         }
+    //                                     }
+    //                                 }
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+    
+    //Bx
+    int imaxX = GTO1.a+GTO2.a+GTO3.a+GTO4.a + 1;
+    vector<double> Bx(imaxX,0);
+
+    for(int i1=0; i1<GTO1.a+GTO2.a+1; i1++) {
+        for(int i2=0; i2<GTO3.a+GTO4.a+1; i2++) {
+            for(int r1=0; r1 < i1/2+1; r1++) {
+                for(int r2=0; r2 < i2/2+1; r2++) {
+                    for(int u=0; u<(i1+i2)/2-r1-r2+1; u++) {
+                        int i = i1+i2-2*(r1+r2)-u;
+                        Bx[i] += electricComponent(i1,i2,r1,r2,u,GTO1.a,GTO2.a,GTO3.a,GTO4.a,GTO1.atompos[0],GTO2.atompos[0],GTO3.atompos[0],GTO4.atompos[0],rp[0],rq[0],gamma12,gamma34,delta);
+                    }   
+                }
+            }
+        }
+    }
+    //By
+    int imaxY = GTO1.b+GTO2.b+GTO3.b+GTO4.b + 1;
+    vector<double> By(imaxY,0);
+
+    for(int i1=0; i1<GTO1.b+GTO2.b+1; i1++) {
+        for(int i2=0; i2<GTO3.b+GTO4.b+1; i2++) {
+            for(int r1=0; r1 < i1/2+1; r1++) {
+                for(int r2=0; r2 < i2/2+1; r2++) {
+                    for(int u=0; u<(i1+i2)/2-r1-r2+1; u++) {
+                        int i = i1+i2-2*(r1+r2)-u;
+                        By[i] += electricComponent(i1,i2,r1,r2,u,GTO1.b,GTO2.b,GTO3.b,GTO4.b,GTO1.atompos[1],GTO2.atompos[1],GTO3.atompos[1],GTO4.atompos[1],rp[1],rq[1],gamma12,gamma34,delta);
                     }
                 }
             }
         }
     }
-    
-    //check summation limits
+    //Bz
+    int imaxZ = GTO1.c+GTO2.c+GTO3.c+GTO4.c + 1;
+    vector<double> Bz(imaxZ,0);
 
-    //Bx
-    // int imaxX = GTO1.a+GTO2.a+GTO3.a+GTO4.a + 1;
-    // vector<double> Bx(imaxX,0);
+    for(int i1=0; i1<GTO1.c+GTO2.c+1; i1++) {
+        for(int i2=0; i2<GTO3.c+GTO4.c+1; i2++) {
+            for(int r1=0; r1 < i1/2+1; r1++) {
+                for(int r2=0; r2 < i2/2+1; r2++) {
+                    for(int u=0; u<(i1+i2)/2-r1-r2+1; u++) {
+                        int i = i1+i2-2*(r1+r2)-u;
+                        Bz[i] += electricComponent(i1,i2,r1,r2,u,GTO1.c,GTO2.c,GTO3.c,GTO4.c,GTO1.atompos[2],GTO2.atompos[2],GTO3.atompos[2],GTO4.atompos[2],rp[2],rq[2],gamma12,gamma34,delta);
+                    }
+                }
+            }
+        }
+    }
 
-    // for(int i1=0; i1<GTO1.a+GTO2.a+1; i1++) {
-    //     for(int i2=0; i2<GTO3.a+GTO4.a+1; i2++) {
-    //         for(int r1=0; r1 < i1/2+1; r1++) {
-    //             for(int r2=0; r2 < i2/2+1; r2++) {
-    //                 for(int u=0; u<(i1+i2)/2-r1-r2+1; u++) {
-    //                     int i = i1+i2-2*(r1+r2)-u;
-    //                     Bx[i] += electricComponent(i1,i2,r1,r2,u,GTO1.a,GTO2.a,GTO3.a,GTO4.a,GTO1.atompos[0],GTO2.atompos[0],GTO3.atompos[0],GTO4.atompos[0],rp[0],rq[0],gamma12,gamma34,delta);
-    //                 }   
-    //             }
-    //         }
-    //     }
-    // }
-    // //By
-    // int imaxY = GTO1.b+GTO2.b+GTO3.b+GTO4.b + 1;
-    // vector<double> By(imaxY,0);
-
-    // for(int i1=0; i1<GTO1.b+GTO2.b+1; i1++) {
-    //     for(int i2=0; i2<GTO3.b+GTO4.b+1; i2++) {
-    //         for(int r1=0; r1 < i1/2+1; r1++) {
-    //             for(int r2=0; r2 < i2/2+1; r2++) {
-    //                 for(int u=0; u<(i1+i2)/2-r1-r2+1; u++) {
-    //                     int i = i1+i2-2*(r1+r2)-u;
-    //                     By[i] += electricComponent(i1,i2,r1,r2,u,GTO1.b,GTO2.b,GTO3.b,GTO4.b,GTO1.atompos[1],GTO2.atompos[1],GTO3.atompos[1],GTO4.atompos[1],rp[1],rq[1],gamma12,gamma34,delta);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-    // //Bz
-    // int imaxZ = GTO1.c+GTO2.c+GTO3.c+GTO4.c + 1;
-    // vector<double> Bz(imaxZ,0);
-
-    // for(int i1=0; i1<GTO1.c+GTO2.c+1; i1++) {
-    //     for(int i2=0; i2<GTO3.c+GTO4.c+1; i2++) {
-    //         for(int r1=0; r1 < i1/2+1; r1++) {
-    //             for(int r2=0; r2 < i2/2+1; r2++) {
-    //                 for(int u=0; u<(i1+i2)/2-r1-r2+1; u++) {
-    //                     int i = i1+i2-2*(r1+r2)-u;
-    //                     Bz[i] += electricComponent(i1,i2,r1,r2,u,GTO1.c,GTO2.c,GTO3.c,GTO4.c,GTO1.atompos[2],GTO2.atompos[2],GTO3.atompos[2],GTO4.atompos[2],rp[2],rq[2],gamma12,gamma34,delta);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-
-    // for(int i=0; i<=(GTO1.a+GTO2.a+GTO3.a+GTO4.a); i++) {
-    //     for(int j=0; j<=(GTO1.b+GTO2.b+GTO3.b+GTO4.b); j++) {
-    //         for(int k=0; k<=(GTO1.c+GTO2.c+GTO3.c+GTO4.c); k++) {
-    //             electric += Bx[i]*By[j]*Bz[k]*fmch(i+j+k,0.25*Rpq_2/delta);
-    //         }
-    //     }
-    // }
+    for(int i=0; i<=(GTO1.a+GTO2.a+GTO3.a+GTO4.a); i++) {
+        for(int j=0; j<=(GTO1.b+GTO2.b+GTO3.b+GTO4.b); j++) {
+            for(int k=0; k<=(GTO1.c+GTO2.c+GTO3.c+GTO4.c); k++) {
+                electric += Bx[i]*By[j]*Bz[k]*fmch(i+j+k,0.25*Rpq_2/delta);
+            }
+        }
+    }
 
     return electric*prefactor*GTO1.getnorm()*GTO2.getnorm()*GTO3.getnorm()*GTO4.getnorm();
 }

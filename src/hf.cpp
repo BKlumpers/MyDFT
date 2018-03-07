@@ -1,13 +1,15 @@
 /*****************************************************************
 
-Basic closed-shell spin-restricted HF-solver for simple molecules using STO-NG
+Basic closed-shell spin-restricted DFT-solver for simple molecules using STO-NG
 
-Author: B. Klumpers (bartkl@live.nl)
+Authors: B. Klumpers
+         I.A.W. Filot
 
 Published under GNU General Public License 3.0
+Source code available at: https://github.com/BKlumpers/dft
 
 Allows for SCF-computation of molecular energies for simple molecules.
-Testcases for H, He, H2, HeH+ and He2 are included.
+Includes testcases for: H, He, H2, HeH+, He2, CO, and H2O.
 
 *****************************************************************/
 
@@ -27,12 +29,13 @@ using namespace std;
 const bool visual = false; //process visualisation of orbitals
 
 //switches for setting which testcases to run
-const bool H_switch = true;
-const bool He_switch = true;
-const bool H2_switch = true;
-const bool HeHp_switch = true;
-const bool He2_switch = false;
-const bool CO_switch = false;
+const bool H_switch = true;                     
+const bool He_switch = true;                    
+const bool H2_switch = false;                   
+const bool HeHp_switch = false;                 //----->implement A_array in nuclear integral
+const bool He2_switch = false;                  //----->implement Poisson potential in 2e-integral
+const bool CO_switch = false;                   //----->for plot2D --> move height, width etc. from global to function, remove as arguments
+const bool H2O_switch = true;
 
 //define functional call for visualisation procedure
 void plot2D(char const title[], double height, double width, double xmin, double xmax, double zmin, double zmax, vector<CGF> AO_list, const Eigen::MatrixXd& Coeff);
@@ -267,7 +270,7 @@ int main() {
         //CO molecule
         cout << "Testcase for CO: " << endl << endl;
 
-        //position second helium appropriate distance from first helium:
+        //create CGF for carbon
         CGF cgfC_1S;
         cgfC_1S.add_gto(0.154329,71.616837,0.0,0.0,0.0,pos);
         cgfC_1S.add_gto(0.535328,13.045096,0.0,0.0,0.0,pos);
@@ -293,6 +296,7 @@ int main() {
         cgfC_2PZ.add_gto(0.607684,0.683483,0.0,0.0,1.0,pos);
         cgfC_2PZ.add_gto(0.391957,0.222290,0.0,0.0,1.0,pos);
         
+        //position oxygen appropriate distance from carbon:
         CGF cgfO_1S;
         cgfO_1S.add_gto(0.154329,130.709320,0.0,0.0,0.0,pos3);
         cgfO_1S.add_gto(0.535328,23.808861,0.0,0.0,0.0,pos3);
@@ -344,7 +348,7 @@ int main() {
 
         vector<int> atnum_list_CO = nelec_list_CO; //create list of atomic numbers
 
-        //perform energy minimisation for He2:
+        //perform energy minimisation for CO:
         SCF_E CO_results;
         cout << "CO_start (HF): " << endl;
         CO_results = SCF_HF_energy(AO_list_CO,pos_list_CO,charge_list_CO,nelec_list_CO);
@@ -356,6 +360,96 @@ int main() {
         if(visual){
             //rescale to CO bond length, then write image of ground-state MO to file
             plot2D("CO.txt",height,width,xmin,xmax,zmin,zmax+2.116,AO_list_CO,CO_results.C_vector);
+        }
+    }
+
+    if(H2O_switch){
+
+        //H2O molecule
+        cout << "Testcase for H2O: " << endl << endl;
+
+        //create CGF for oxygen        
+        CGF cgfOx_1S;
+        cgfOx_1S.add_gto(0.154329,130.709320,0.0,0.0,0.0,pos);
+        cgfOx_1S.add_gto(0.535328,23.808861,0.0,0.0,0.0,pos);
+        cgfOx_1S.add_gto(0.444635,6.443608,0.0,0.0,0.0,pos);
+        
+        CGF cgfOx_2S;
+        cgfOx_2S.add_gto(-0.099967,5.033151,0.0,0.0,0.0,pos);
+        cgfOx_2S.add_gto(0.399513,1.169596,0.0,0.0,0.0,pos);
+        cgfOx_2S.add_gto(0.700115,0.380389,0.0,0.0,0.0,pos);
+        
+        CGF cgfOx_2PX;
+        cgfOx_2PX.add_gto(0.155916,5.033151,1.0,0.0,0.0,pos);
+        cgfOx_2PX.add_gto(0.607684,1.169596,1.0,0.0,0.0,pos);
+        cgfOx_2PX.add_gto(0.391957,0.380389,1.0,0.0,0.0,pos);
+        
+        CGF cgfOx_2PY;
+        cgfOx_2PY.add_gto(0.155916,5.033151,0.0,1.0,0.0,pos);
+        cgfOx_2PY.add_gto(0.607684,1.169596,0.0,1.0,0.0,pos);
+        cgfOx_2PY.add_gto(0.391957,0.380389,0.0,1.0,0.0,pos);
+        
+        CGF cgfOx_2PZ;
+        cgfOx_2PZ.add_gto(0.155916,5.033151,0.0,0.0,1.0,pos);
+        cgfOx_2PZ.add_gto(0.607684,1.169596,0.0,0.0,1.0,pos);
+        cgfOx_2PZ.add_gto(0.391957,0.380389,0.0,0.0,1.0,pos);
+
+        //first hydrogen atom
+        vec3 pos_H2O_1;
+        pos_H2O_1 << 0.554,0.0,0.709;
+
+        CGF cgfH_1x;
+        cgfH_1x.add_gto(0.15432897000000001,3.4252509099999999,0.0,0.0,0.0,pos_H2O_1);
+        cgfH_1x.add_gto(0.53532813999999995,0.62391373000000006,0.0,0.0,0.0,pos_H2O_1);
+        cgfH_1x.add_gto(0.44463454000000002,0.16885539999999999,0.0,0.0,0.0,pos_H2O_1);
+
+        //second hydrogen atom
+        vec3 pos_H2O_2;
+        pos_H2O_2 << 0.554,0.0,-0.709;
+
+        CGF cgfH_2x;
+        cgfH_2x.add_gto(0.15432897000000001,3.4252509099999999,0.0,0.0,0.0,pos_H2O_2);
+        cgfH_2x.add_gto(0.53532813999999995,0.62391373000000006,0.0,0.0,0.0,pos_H2O_2);
+        cgfH_2x.add_gto(0.44463454000000002,0.16885539999999999,0.0,0.0,0.0,pos_H2O_2);
+
+        vector<CGF> AO_list_H2O; //create object containing all atomic orbitals
+        AO_list_H2O.push_back(cgfOx_1S);
+        AO_list_H2O.push_back(cgfOx_2S);
+        AO_list_H2O.push_back(cgfOx_2PX);
+        AO_list_H2O.push_back(cgfOx_2PY);
+        AO_list_H2O.push_back(cgfOx_2PZ);
+        AO_list_H2O.push_back(cgfH_1x);
+        AO_list_H2O.push_back(cgfH_2x);
+
+        vector<vec3> pos_list_H2O; //create list of nucleic positions
+        pos_list_H2O.push_back(pos);
+        pos_list_H2O.push_back(pos_H2O_1);
+        pos_list_H2O.push_back(pos_H2O_2);
+
+        vector<double> charge_list_H2O; //create list of nucleic charges
+        charge_list_H2O.push_back(O_Z);
+        charge_list_H2O.push_back(H_Z);
+        charge_list_H2O.push_back(H_Z);
+
+        vector<int> nelec_list_H2O; //create list of electrons for each atom
+        nelec_list_H2O.push_back(O_nelec);
+        nelec_list_H2O.push_back(H_nelec);
+        nelec_list_H2O.push_back(H_nelec);
+
+        vector<int> atnum_list_H2O = nelec_list_H2O; //create list of atomic numbers
+
+        //perform energy minimisation for He2:
+        SCF_E H2O_results;
+        cout << "H2O_start (HF): " << endl;
+        H2O_results = SCF_HF_energy(AO_list_H2O,pos_list_H2O,charge_list_H2O,nelec_list_H2O);
+        
+        cout << "H2O_start (DFT): " << endl;
+        SCF_E H2O_DFT;
+        H2O_DFT = SCF_DFT_energy(AO_list_H2O,pos_list_H2O,charge_list_H2O,nelec_list_H2O,atnum_list_H2O);
+
+        if(visual){
+            //rescale to CO bond length, then write image of ground-state MO to file
+            plot2D("H2O.txt",2*height,2*width,xmin-0.554,xmax+0.554,zmin-0.709,zmax+0.709,AO_list_H2O,H2O_results.C_vector);
         }
     }
 

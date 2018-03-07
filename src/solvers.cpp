@@ -1,13 +1,15 @@
 /*****************************************************************
 
-Basic closed-shell spin-restricted HF-solver for simple molecules using STO-NG
+Basic closed-shell spin-restricted DFT-solver for simple molecules using STO-NG
 
-Author: B. Klumpers (bartkl@live.nl)
+Authors: B. Klumpers
+         I.A.W. Filot
 
 Published under GNU General Public License 3.0
+Source code available at: https://github.com/BKlumpers/dft
 
 Allows for SCF-computation of molecular energies for simple molecules.
-Testcases for H, He, H2, HeH+ and He2 are included.
+Includes testcases for: H, He, H2, HeH+, He2, CO, and H2O.
 
 *****************************************************************/
 

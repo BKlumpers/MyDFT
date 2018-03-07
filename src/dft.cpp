@@ -2,12 +2,14 @@
 
 Basic closed-shell spin-restricted DFT-solver for simple molecules using STO-NG
 
-Author: B. Klumpers (bartkl@live.nl)
+Authors: B. Klumpers
+         I.A.W. Filot
 
 Published under GNU General Public License 3.0
+Source code available at: https://github.com/BKlumpers/dft
 
 Allows for SCF-computation of molecular energies for simple molecules.
-Testcases for H, He, H2, HeH+ and He2 are included.
+Includes testcases for: H, He, H2, HeH+, He2, CO, and H2O.
 
 *****************************************************************/
 
@@ -122,37 +124,38 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
     double energy = 0.0; //initialise energy
 
     //really inefficient grid (Hardcoded)
-        static const double Nstep = 30.0; //have integral run in 3d{x,y,z} with Nstep+1 discrete steps along each axis
-        static const int steps = int(Nstep) + 1; //turn loop-counter into int to support openmp
-        static const double SingularTol = 1e-4; //tolerance for identifying singularities
-        static const double DenTol = 1e-10;
-        double Density = 0.0; //hold value of the local electron density
-        double Local = 0.0; //hold value of local AO-density
-        double weight = 0.0;
-        Eigen::MatrixXd Exchange = Eigen::MatrixXd::Zero(AO_list.size(), AO_list.size()); //initialise value of the exchange energy integral
-        Eigen::MatrixXd Correlation = Eigen::MatrixXd::Zero(AO_list.size(), AO_list.size()); //initialise value of the correlation energy integral
-        double Ex = 0.0; //initialise exchange energy
-        double Ec = 0.0; //initialise correlation energy
-        double NELEC = 0.0;
-        //define lower and upper bounds for x-axis
-        double limset = 3.0;
-        double xmin = -limset, xmax = limset;
-        //define lower and upper bounds for y-axis
-        double ymin = -limset, ymax = limset;
-        //define lower and upper bounds for z-axis
-        double zmin = -limset, zmax = limset;
+    static const double Nstep = 30.0; //have integral run in 3d{x,y,z} with Nstep+1 discrete steps along each axis
+    static const int steps = int(Nstep) + 1; //turn loop-counter into int to support openmp
+    static const double SingularTol = 1e-4; //tolerance for identifying singularities
+    static const double DenTol = 1e-10;
+    double Density = 0.0; //hold value of the local electron density
+    double Local = 0.0; //hold value of local AO-density
+    double weight = 0.0; //hold value of the weight of the quadratic grid
+    Eigen::MatrixXd Exchange = Eigen::MatrixXd::Zero(AO_list.size(), AO_list.size()); //initialise value of the exchange energy integral
+    Eigen::MatrixXd Correlation = Eigen::MatrixXd::Zero(AO_list.size(), AO_list.size()); //initialise value of the correlation energy integral
+    double Ex = 0.0; //initialise exchange energy
+    double Ec = 0.0; //initialise correlation energy
+    double NELEC = 0.0; //initialise counter for electrons
+    //define lower and upper bounds for x-axis
+    double limset = 3.0;
+    double xmin = -limset, xmax = limset;
+    //define lower and upper bounds for y-axis
+    double ymin = -limset, ymax = limset;
+    //define lower and upper bounds for z-axis
+    double zmin = -limset, zmax = limset;
 
-        double dV = (xmax-xmin)*(ymax-ymin)*(zmax-zmin)/pow(Nstep,3.0); //mesh-unit volume
+    double dV = (xmax-xmin)*(ymax-ymin)*(zmax-zmin)/pow(Nstep,3.0); //mesh-unit volume
 
-        double xpos,ypos,zpos;
-        vec3 origin; //mesh-point centre
+    double xpos,ypos,zpos;
+    vec3 origin; //mesh-point centre
 
     //Gauss-Chebyshev Lebedev grid:
     cout << "Generate GCL-grid: " << endl;
     grid GCL_grid = make_grid(pos_list, atnum_list, AO_list.size());
+    cout << "Writing wavefunctions: " << AO_list.size() << endl;
     //add line for setting wavefunction amplitudes
+    GCL_grid.write_amps(AO_list);
     cout << "Finished generating grid;" << endl;
-    //cout << "test: " << GCL_grid.get_gridpoint(0,0,0) << endl;
 
     cout << "Beginning electronic optimisation: " << endl;
     cout << "Iter./Energy;" << endl;
@@ -169,25 +172,28 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
         for(int i=0; i<AO_list.size(); i++) {
             for(int j=0; j<AO_list.size(); j++) {
                 G_two_electron(i,j) = 0.0; //reset matrices
-                Exchange(i,j) = 0.0;
-                Correlation(i,j) = 0.0;
-                for(int xx=0; xx<steps; xx++){
-                    xpos = xmin + xx*(xmax-xmin)/Nstep;
-                    for(int yy=0; yy<steps; yy++){
-                        ypos = ymin + yy*(ymax-ymin)/Nstep;
-                        for(int zz=0; zz<steps; zz++){
-                            zpos = zmin + zz*(zmax-zmin)/Nstep;
-                            origin << xpos,ypos,zpos;
-                            Density = density(origin, P_density, AO_list);
-
-                            if(Density > DenTol){
-                                Local = AO_list[i].getvalue(origin)*AO_list[j].getvalue(origin);
-                                Exchange(i,j) += dV*exchange_Dirac(Density)*Local; //Dirac exchange functional
-                                Correlation(i,j) += dV*VWN_potential(Density)*Local; //Vosko-Wilk-Nusair correlation functional
-                                if(i == 0 && j == 0){
-                                    Ex += 0.75*dV*exchange_Dirac(Density)*Density; //add factor 3/4 to convert potential to energy
-                                    Ec += dV*correlation_VWN(Density)*Density;
-                                    NELEC += dV*Density;
+                //compute exchange-correlation according to a Cartesian grid
+                if(!Quadrature){
+                    Exchange(i,j) = 0.0;
+                    Correlation(i,j) = 0.0;
+                    for(int xx=0; xx<steps; xx++){
+                        xpos = xmin + xx*(xmax-xmin)/Nstep;
+                        for(int yy=0; yy<steps; yy++){
+                            ypos = ymin + yy*(ymax-ymin)/Nstep;
+                            for(int zz=0; zz<steps; zz++){
+                                zpos = zmin + zz*(zmax-zmin)/Nstep;
+                                origin << xpos,ypos,zpos;
+                                Density = density(origin, P_density, AO_list);
+                                if(Density > DenTol){
+                                    Local = AO_list[i].getvalue(origin)*AO_list[j].getvalue(origin);
+                                    Exchange(i,j) += dV*exchange_Dirac(Density)*Local; //Dirac exchange functional
+                                    Correlation(i,j) += dV*VWN_potential(Density)*Local; //Vosko-Wilk-Nusair correlation functional
+                                    if(i == 0 && j == 0){
+                                        //the additional nelec/2 is a scaling factor in restricted systems due to present looping scheme
+                                        Ex += 0.75*dV*exchange_Dirac(Density)*Density*(nelec/2); //add factor 3/4 to convert potential to energy
+                                        Ec += dV*correlation_VWN(Density)*Density*(nelec/2);
+                                        NELEC += dV*Density; //check if nelec-factor is needed here as well
+                                    }
                                 }
                             }
                         }
@@ -202,47 +208,33 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
             }
         }
 
-        //new grid
-        // //2e-integral:
-        // for(int i=0; i<AO_list.size(); i++){
-        //     for(int j=0; j<AO_list.size(); j++){
-        //         G_two_electron(i,j) = 0.0; //reset matrix
-        //         for(int k=0; k<AO_list.size(); k++){
-        //             for(int l=0; l<AO_list.size(); l++){
-        //                 indexJ = two_electronSort(i,j,k,l)
-        //                 G_two_electron(i,j) += 0.5 * P_density(k,l) * Rep[indexJ]; //for DFT only J, not K
-        //             }
-        //         }
-        //     }
-        // }
-        // //exchange-correlation:
-        // for(int i=0; i<AO_list.size(); i++){
-        //     for(int j=0; j<AO_list.size(); j++){
-        //         Exchange(i,j) = 0.0;
-        //         Correlation(i,j) = 0.0;
-        //         //compute exchange-correlation terms
-        //         for(int rpnt=0; rpnt<15; rpnt++){ //loop across all radial points
-        //             for(int apnt=0; apnt<110; apnt++){ //loop across all angular points
-        //                 for(int atom=0; atom<atnum_list.size(); atom++){ //loop across all angular grids
-        //                     //get electron density at this gridpoint
-        //                     Density = density(Grid.get_gridpoint(atom,rpnt,apnt), P_density, AO_list); //change to use getamp
-        //                     if(Density > DenTol){
-        //                         weight = GCL_grid.get_weight(atom,rpnt,apnt);
-        //                         Local = AO_list[i].getvalue(origin)*AO_list[j].getvalue(origin);
-        //                         Exchange(i,j) += weight*exchange_Dirac(Density)*Local; //Dirac exchange functional
-        //                         Correlation(i,j) += weight*VWN_potential(Density)*Local; //Vosko-Wilk-Nusair correlation functional
-        //                         if(i == 0 && j == 0){
-        //                             Ex += 0.75*weight*exchange_Dirac(Density)*Density; //add factor 3/4 to convert potential to energy
-        //                             Ec += weight*correlation_VWN(Density)*Density;
-        //                             NELEC += weight*Density;
-        //                         }
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
-        //new grid end
+        //compute exchange-correlation terms utilising numerical quadrature
+        if(Quadrature){
+            Exchange = Eigen::MatrixXd::Zero(Exchange.rows(), Exchange.cols()); //reset XC-matrices
+            Correlation = Eigen::MatrixXd::Zero(Correlation.rows(), Correlation.cols());
+            GCL_grid.set_density(P_density); //update electron density map
+            for(int rpnt=0; rpnt<GCL_grid.get_rpnt(); rpnt++){ //loop across all radial points
+                for(int apnt=0; apnt<GCL_grid.get_apnt(); apnt++){ //loop across all angular points
+                    for(int atom=0; atom<GCL_grid.get_atomnr(); atom++){ //loop across all atomic grids
+                        //get electron density at this gridpoint
+                        Density = GCL_grid.get_density(atom, rpnt, apnt);//density(atom, rpnt, apnt, P_density, GCL_grid);
+                        if(Density > DenTol){
+                            weight = GCL_grid.get_weight(atom,rpnt,apnt);
+                            Ex += 0.75*weight*exchange_Dirac(Density)*Density; //add factor 3/4 to convert potential to energy
+                            Ec += weight*correlation_VWN(Density)*Density;
+                            NELEC += weight*Density;
+                            for(int i=0; i<AO_list.size(); i++){ //change nesting order, which limits the number of times the density must be computed
+                                for(int j=0; j<AO_list.size(); j++){
+                                    Local = GCL_grid.get_amps(atom,rpnt,apnt,i)*GCL_grid.get_amps(atom,rpnt,apnt,j);
+                                    Exchange(i,j) += weight*exchange_Dirac(Density)*Local; //Dirac exchange functional
+                                    Correlation(i,j) += weight*VWN_potential(Density)*Local; //Vosko-Wilk-Nusair correlation functional
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         //Calculate Fock Matrix
         Eigen::MatrixXd Fock = Hamil + 2.0*G_two_electron + Exchange + Correlation;
@@ -257,13 +249,30 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
 
         //Calculate total electronic energy of the system
         energy = 0.0;
-        Eigen::MatrixXd E_total = Hamil + G_two_electron;// + Exchange + Correlation; //non-weighted components of total electronic energy
+        // double T = 0.0;
+        // double Jx = 0.0;
+        // double Nx = 0.0;
+        // double Pot = 0.0;
+
+        Eigen::MatrixXd E_total = Hamil + G_two_electron; //non-weighted components of total electronic energy
         for(int i=0; i<AO_list.size(); i++) {
             for(int j=0; j<AO_list.size(); j++) {
                 energy += P_density(j,i) * E_total(i,j); //weigh matrix elements
+                // T += P_density(j,i) * Kin(i,j);
+                // Jx += P_density(j,i) * G_two_electron(i,j);
+                // Pot += P_density(j,i) * (Exchange(i,j) + Correlation(i,j));
             }
         }
-        energy += (Ex + Ec)*(nelec/2); //include XC-energies, the additional nelec/2 is a scaling factor in restricted systems due to looping above
+        energy += (Ex + Ec); //include XC-energies
+
+        // cout << endl << "Exc: " << (Ex + Ec)*(nelec/2) << endl;
+        // cout << "#e: " << NELEC << endl;
+        // cout << "Vxc: " << Pot << endl;
+        // cout << "T: " << T << endl;
+        // cout << "J: " << Jx << endl;
+        // cout << "Nucl: " << Nx << endl;
+        // cout << "One: " << T+Nx << endl << endl;
+
         //Add nuclear repulsion to the orbital energies
         for(int i=0; i<charge_list.size(); i++){
             for(int j=0; j<charge_list.size(); j++){
@@ -303,64 +312,71 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
 
     //debugging:
 
-    double Tkin = 0.0;
-    double Vnucl = 0.0;
-    double JJ = 0.0;
-    double ExP = 0.0;
-    double EcP = 0.0;
-    for(int i=0; i<AO_list.size(); i++) {
-        for(int j=0; j<AO_list.size(); j++) {
-            Tkin += P_density(j,i)*Kin(i,j);
-            Vnucl += P_density(j,i)*Nucl(i,j);
-            JJ += P_density(j,i)*G_two_electron(i,j);
-            ExP += P_density(j,i)*Exchange(i,j);
-            EcP += P_density(j,i)*Correlation(i,j);
-        }
-    }
-    //Add nuclear repulsion to the orbital energies
-    double NN = 0.0;
-    for(int i=0; i<charge_list.size(); i++){
-        for(int j=0; j<charge_list.size(); j++){
-            if(j>i){
-                NN += charge_list[i]*charge_list[j]/(pos_list[i]-pos_list[j]).norm();
-            }
-        }
-    }
-    cout << "Tkin: " << Tkin << endl;
-    cout << "Vnucl: " << Vnucl << endl;
-    cout << "JJ: " << JJ << endl;
-    cout << "Ex: " << Ex << " vs ExP: " << ExP << endl;
-    cout << "Ec: " << Ec << " vs EcP: " << EcP << endl;
-    cout << "NN: " << NN << endl;
-    cout << "TTL: " << Tkin+Vnucl+JJ+Ex+Ec+NN << endl;
+    // double Tkin = 0.0;
+    // double Vnucl = 0.0;
+    // double JJ = 0.0;
+    // double ExP = 0.0;
+    // double EcP = 0.0;
+    // for(int i=0; i<AO_list.size(); i++) {
+    //     for(int j=0; j<AO_list.size(); j++) {
+    //         Tkin += P_density(j,i)*Kin(i,j);
+    //         Vnucl += P_density(j,i)*Nucl(i,j);
+    //         JJ += P_density(j,i)*G_two_electron(i,j);
+    //         ExP += P_density(j,i)*Exchange(i,j);
+    //         EcP += P_density(j,i)*Correlation(i,j);
+    //     }
+    // }
+    // //Add nuclear repulsion to the orbital energies
+    // double NN = 0.0;
+    // for(int i=0; i<charge_list.size(); i++){
+    //     for(int j=0; j<charge_list.size(); j++){
+    //         if(j>i){
+    //             NN += charge_list[i]*charge_list[j]/(pos_list[i]-pos_list[j]).norm();
+    //         }
+    //     }
+    // }
+    // cout << "Tkin: " << Tkin << endl;
+    // cout << "Vnucl: " << Vnucl << endl;
+    // cout << "JJ: " << JJ << endl;
+    // cout << "Ex: " << Ex << " vs ExP: " << ExP << endl;
+    // cout << "Ec: " << Ec << " vs EcP: " << EcP << endl;
+    // cout << "NN: " << NN << endl;
+    // cout << "TTL: " << Tkin+Vnucl+JJ+Ex+Ec+NN << endl;
 
     //debugging_end
 
     //compute number of electrons from density
     //N = sum(P*S)
-    double Ndel = 0.0;
-    for(int i=0; i<AO_list.size(); i++){
-        for(int j=0; j<AO_list.size(); j++){
-            Ndel += P_density(i,j)*S(i,j);
-        }
-    }
+    // double Ndel = 0.0;
+    // for(int i=0; i<AO_list.size(); i++){
+    //     for(int j=0; j<AO_list.size(); j++){
+    //         Ndel += P_density(i,j)*S(i,j);
+    //     }
+    // }
 
-    vec3 posQ;
-    double Quad = 0.0;
-    //compute number of electrons using quadrature:
-    for(int atom=0; atom<pos_list.size(); atom++){
-        for(int rpnt=0; rpnt<15; rpnt++){
-            for(int apnt=0; apnt<110; apnt++){
-                posQ << GCL_grid.get_gridpoint(atom,rpnt,apnt); //the 3 iteration loops go over all the gridpoints in the molecular grid
-                Quad += GCL_grid.get_weight(atom,rpnt,apnt)*density(posQ, P_density, AO_list);
-            }
-        }
-    }
+    // vec3 posQ;
+    // double Quad = 0.0;
+    // //compute number of electrons using quadrature:
+    // for(int atom=0; atom<pos_list.size(); atom++){
+    //     for(int rpnt=0; rpnt<15; rpnt++){
+    //         for(int apnt=0; apnt<110; apnt++){
+    //             posQ << GCL_grid.get_gridpoint(atom,rpnt,apnt); //the 3 iteration loops go over all the gridpoints in the molecular grid
+    //             Quad += GCL_grid.get_weight(atom,rpnt,apnt)*density(posQ, P_density, AO_list);
+    //         }
+    //     }
+    // }
     
     //output SCF results
-    cout << "Stopping because energy convergence was achieved." << endl;
+    if(loop_counter == loop_max){
+        cout << "Stopping because maximum number of iterations was reached." << endl;
+        cout << "Energy may not have converged." << endl;
+    }
+    else{
+        cout << "Stopping because energy convergence was achieved." << endl;
+    }
     cout << "System Energy = " << energy << endl;
-    cout << "#Electrons = " << Ndel << " vs SCF: " << NELEC << " vs Quad: " << Quad << endl << endl;
+    cout << "#Electrons = " << NELEC << endl;
+    //cout << "#Electrons = " << Ndel << " vs SCF: " << NELEC << " vs Quad: " << Quad << endl << endl;
 
     //parse results
     out.SCF_result(energy,orbital_energies,C_vector);
@@ -380,6 +396,17 @@ double density(const vec3& pos, const Eigen::MatrixXd& Pmatrix, vector<CGF> AO_l
     for(int i=0; i<Pmatrix.rows(); i++){
         for(int j=0; j<Pmatrix.rows(); j++){
             density_value += Pmatrix(i,j)*AO_list[i].getvalue(pos)*AO_list[j].getvalue(pos);
+        }
+    }
+    return density_value;
+}
+//**************************
+double density(int atom, int rpnt, int apnt, const Eigen::MatrixXd& Pmatrix, grid Grid) //overloading to include quadrature
+{
+    double density_value = 0.0;
+    for(int i=0; i<Pmatrix.rows(); i++){
+        for(int j=0; j<Pmatrix.rows(); j++){
+            density_value += Pmatrix(i,j)*Grid.get_amps(atom,rpnt,apnt,i)*Grid.get_amps(atom,rpnt,apnt,j);
         }
     }
     return density_value;

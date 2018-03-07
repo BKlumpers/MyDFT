@@ -46,6 +46,9 @@ public:
     /* number of coefficients per order */
     static constexpr unsigned int num_lebedev_points[11] = {6, 14, 26, 38, 50, 74, 86, 110, 146, 170, 194};
 
+    /* order of the Lebedev quadrature*/
+    //static constexpr unsigned int lebedev_order[11] = {3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23};
+
     /* total size of lebedev_coefficient matrix */
     static constexpr unsigned int num_lebedev_coefficients = 6 + 14 + 26 + 38 + 50 +74 + 86 + 110 + 146 +170 +194;
 
