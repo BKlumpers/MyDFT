@@ -19,12 +19,12 @@ ifeq ($(UNAME_S),Darwin)
     CFLAGS  += -I/usr/local/Cellar/eigen/3.3.4/include/eigen3
 	LDFLAGS +=
 else
-    CFLAGS += `pkg-config --cflags eigen3 libpng` -I/mingw64/include # include eigen, libpng and boost
-	LDFLAGS += `pkg-config --libs libpng` # link libpng
+    CFLAGS += `pkg-config --cflags eigen3` -I/mingw64/include # include eigen and boost
+	LDFLAGS += #
 endif
 
 # add here the source files for the compilation
-SOURCES = hf.cpp integrals.cpp solvers.cpp prelim_math.cpp dft.cpp quadrature.cpp lebedev.cpp
+SOURCES = hf.cpp integrals.cpp solvers.cpp prelim_math.cpp dft.cpp quadrature.cpp lebedev.cpp Harmonics.cpp
 
 # create the obj variable by substituting the extension of the sources
 # and adding a path
