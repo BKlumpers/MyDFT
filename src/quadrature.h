@@ -19,12 +19,14 @@ Includes testcases for: H, He, H2, HeH+, He2, CO, and H2O.
 //Poisson potential should be per unique 2e-integral ---> how to do the storage?   ----> NOT NEEDED! alleviate {k,l} summation through commutivity of densities
 
 #include <iostream>
+#include <fstream>
 #include <cmath>
 #include <vector>
 #include <Eigen/Dense>
 #include "lebedev.h"
 #include "orbitals.h"
 #include "Harmonics.h"
+#include <boost/math/interpolators/cubic_b_spline.hpp>
 
 typedef Eigen::Vector3d vec3; //define vec3 as the Eigen::Vector3d-object
 
@@ -37,27 +39,19 @@ using namespace std;
 //{Laplace} contains the Laplace coefficients for the local Poisson potential; matrix[rpnts, lmttl], each value of {l,m} has values at each radial point
 //{Ulm} contains the radial potential function, hence dimensions are equal to Laplace
 //{potential} contains the local and external Poisson potential at each radial point; matrix[2, radial_points], 1st row local, 2nd row external
-//{lmttl} is the total number of real spherical harmonics in the basis
-//{lebedev_order} is the order of the Lebedev quadrature, which relates to the highest angular momentum in the harmonics expansion as: lmax = lebedev_order/2
 class atomicgrid {
 public:
-	//int lmttl, lmax;
 	Eigen::MatrixXd gridpoints;
 	Eigen::MatrixXd amps;
 	Eigen::MatrixXd Laplace;
 	Eigen::MatrixXd Ulm;
 	Eigen::MatrixXd potential;
+	double point_charge;
 	//class constructor
 	atomicgrid(int radial_points, int angular_points, int Basis, int lmttl){
 		gridpoints = Eigen::MatrixXd::Zero(3, radial_points*angular_points); //create empty atomic grid
 		amps = Eigen::MatrixXd::Zero(Basis+1, radial_points*angular_points); //create empty amplitude and density maps
-		//Poisson:
-		// lmax = Lebedev_order + 1; //store this parameter, since Lebedev::lebedev_num = n-1 gives Lebedev_order 2n+1, +1 is to correct for n starting at 0
-		// int lmttl = 0;
-		// for(int i=0; i<(1+lmax); i++){ //lmax = lebedev_order/2;
-		// 	lmttl += 2*i+1; //add the number of m-values for degree l, sum over all degrees to get the total number of harmonics
-		// }
-		//make Laplace contain first index for each l,m couple; second index along radii: atomnr*radial + rpnt
+		//make Laplace contain 2nd index for each l,m couple; first index along radii
 		Laplace = Eigen::MatrixXd::Zero(radial_points, lmttl);
 		//make potential contain internal + external potentials, for each gridpoint
 		potential = Eigen::MatrixXd::Zero(2, radial_points*angular_points);
@@ -74,6 +68,8 @@ public:
 //matrix[n,m] containing the weights of the mesh-units
 //where n is the index of the nuclei and m are the mesh-centra and gridpoints respectively
 //
+//{lmttl} is the total number of real spherical harmonics in the basis
+//{lebedev_order} is the order of the Lebedev quadrature, which relates to the highest angular momentum in the harmonics expansion as: lmax = lebedev_order/2
 class grid {
 private:
 	static constexpr double pi = 3.14159265359;
@@ -85,10 +81,10 @@ private:
 	vector<vec3> pos_list; //need the nucleic coordinates for spline interpolation of the external Poisson potentials
 public:
 	//initialise object with predefined gridsizes and known number of atoms; //----------> pos_list to replace int atoms
-	grid(vector<vec3> Pos_list, int radial, int angular, int Basis, int Lebedev_order) {
+	grid(const vector<vec3>& Pos_list, int radial, int angular, int Basis, int Lebedev_order) {
 		radial_points = radial; //store number of radial gridpoints inside the class
 		angular_points = angular; //store number of angular gridpoints inside the class
-		pos_list = Pos_list;
+		pos_list = Pos_list; //store nucleic positions
 		//Poisson:
 		lmax = Lebedev_order + 1; //store this parameter, since Lebedev::lebedev_num = n-1 gives Lebedev_order 2n+1, +1 is to correct for n starting at 0
 		int lmttl = 0;
@@ -158,6 +154,7 @@ public:
 		static double density_value;
 		//loop across all gridpoints and all basis functions
 		for(int atomnr=0; atomnr<gridpoints.size(); atomnr++){ //loop across all atomic grids
+			gridpoints[atomnr].point_charge = 0.0; //reset magnitude of point-charge potential
 			for(int rpnt=0; rpnt<radial_points; rpnt++){ //loop across all radial points
 				for(int apnt=0; apnt<angular_points; apnt++){ //loop across all angular points
 					density_value = 0.0; //reset density storage
@@ -168,13 +165,19 @@ public:
 						}
 					}
 					gridpoints[atomnr].amps(gridpoints[atomnr].amps.rows()-1, rpnt*angular_points+apnt) = density_value; //write total local electron density to atomic grid
+					gridpoints[atomnr].point_charge += get_weight(atomnr,rpnt,apnt) * density_value;
 				}
 			}
 		}
+		set_Poisson(); //update the Poisson potentials as well
 	}
 	//retrieve value of the density at specified gridpoint
 	double get_density(int atomnr, int radial, int angular){
 		return gridpoints[atomnr].amps(gridpoints[atomnr].amps.rows()-1, radial*angular_points + angular);
+	}
+	//retrieve point-charge potential of specified atomic grid
+	double get_point_charge(int atomnr){
+		return gridpoints[atomnr].point_charge;
 	}
 	//retrieve number of radial points
 	int get_rpnt(){
@@ -196,7 +199,7 @@ public:
 	void set_Laplace(){
 		static const double omega = 4.0*pi/(angular_points);
 
-		cout << "confirm static omega: " << omega << endl;
+		//cout << "confirm static omega: " << omega << endl;
 
 		//static vec3 point;
 		static double delta;
@@ -214,6 +217,7 @@ public:
 						for(int apnt=0; apnt<angular_points; apnt++){
 							//point << (get_gridpoint(atom, rpnt, 0) - pos_list[atom]); //shift coordinate system to position centre of the atomic grid at the origin
 							gridpoints[atom].Laplace(rpnt, index) += get_weight(atom, rpnt, apnt)*get_density(atom, rpnt, apnt) * HarmonicReal(l, m, get_gridpoint(atom, rpnt, apnt) - pos_list[atom]) * delta;
+							//cout << "harmonictest: " << HarmonicReal(l, m, get_gridpoint(atom, rpnt, apnt) - pos_list[atom]) << " at " << gridpoints[atom].Laplace(rpnt, index) << endl;
 						}
 					}
 				}
@@ -230,55 +234,73 @@ public:
 		}
 		return sum + m - 1 - l; //shift the index to match current value of m
 	}
+	//compute both local and external Poisson potentials
+	void set_Poisson(){
+		set_Laplace(); //compute the Laplace coefficients
+		//cout << "Laplace is set" << endl;
+		set_Poisson_L(); //set local Poisson potential
+		//cout << "set local" << endl;
+		set_Poisson_E(); //set external Poisson potential
+		//cout << "set ext;" << endl;
+		std::ofstream file("Poisson.txt"); //set file as output stream
+    	file << gridpoints[0].potential << '\n'; //write image to file
+		//cout << "Poisson: " << endl << gridpoints[0].potential << endl;
+	}
+	//retrieve value of the Poisson potential at the point specified by atom, rpnt
+	double get_Poisson(int atomnr, int rpnt){
+		return gridpoints[atomnr].potential(0,rpnt) + gridpoints[atomnr].potential(1,rpnt); //return sum of local and external potentials
+	}
 	//compute the local Poisson potential at all points using finite differences
 	void set_Poisson_L(){
 
-		//reset potentials
-
 		static int index;
 		static double radius;
-		static vec3 point;
+
+		//do recalculate U7 for each atom since formally the grids have different scaling for different atoms, hence values of r in U7 are different as well
 		set_hepta(0); //move inside the atomic loop if scaling of r through rm is implemented since rm = f(atom)
+
 		for(int atom=0; atom<gridpoints.size(); atom++){ //evaluate the potential on each atomic grid
+			//cout << "atomic update" << endl;
+			gridpoints[atom].potential.row(0) = Eigen::VectorXd::Zero(gridpoints[atom].potential.cols()); //reset potential
+			//cout << "reset potential local" << endl;
 			//for each rpnt, sum across all {l,m}
 			for(int l=0; l<lmax+1; l++){
-				update_hepta(l);
+				//cout << "update hepta" << endl;
+				update_hepta(l);			//for given l, construct U7
+				//cout << "hepta updated" << endl;
 				for(int m=-l; m<l+1; m++){
 					index = lm_index(l,m);
-					//get a vector of rho_lm(r), create a matrix of these vectors for each m value given the current l
-					//call solver for all of these?
-					//->bypass U00 by adjusting for BC in this function already
-
-					//Ulm_solve(atom, rho_lm); //fill gridpoints[atom].Ulm given Laplace + Boundary conditions in rho_lm -> or simply call gridpoint[atom].Laplace and only parse BC
+					Ulm_solve(atom, index); //fill gridpoints[atom].Ulm given Laplace + Boundary conditions
+					//cout << "called Ulm_solve" << endl;
 					for(int rpnt=0; rpnt<radial_points; rpnt++){
-						point << (get_gridpoint(atom, rpnt, 0) - pos_list[atom]);
-						radius = point.norm(); //radius is invariant under apnt
+						radius = (get_gridpoint(atom, rpnt, 0) - pos_list[atom]).norm(); //radius is invariant under apnt
 						for(int apnt=0; apnt<angular_points; apnt++){
-							gridpoints[atom].potential(1,rpnt*angular_points+apnt) += gridpoints[atom].Ulm(rpnt, index) * HarmonicReal(l, m, get_gridpoint(atom, rpnt, apnt) - pos_list[atom]) / radius;
+							gridpoints[atom].potential(0,rpnt*angular_points+apnt) += gridpoints[atom].Ulm(rpnt, index) * HarmonicReal(l, m, get_gridpoint(atom, rpnt, apnt) - pos_list[atom]) / radius;
 						}
 					}
+					//cout << "proceed to next m" << endl;
 				}
 			}
-			//
-			//for given l, construct U7
-			//simultaneously solve for all values of m, since U7 is the same for each (only depends on l)
-			//do recalculate U7 for each atom since formally the grids have different scaling for different atoms, hence values of r in U7 are different as well
 		}
 	}
 	//compute the external Poisson potential at all points using spline interpolation
-	void set_Poisson_Eeee(){
+	void set_Poisson_E(){
 		static double distance;
 
 		for(int atom1=0; atom1<gridpoints.size(); atom1++){
 			for(int rpnt=0; rpnt<radial_points; rpnt++){ //loop across all the radial points of atom1 to get external potential at each of these points
-				gridpoints[atom1].potential(2,rpnt) = 0.0; //reset external potential
-				for(int atom2=0; atom2<gridpoints.size(); atom2++){
-					//compute the external potential for all other atoms
-					if(atom1 != atom2){
-						//total distance between nuclei - distance between gridpoint and atom1 = distance between gridpoint and atom2
-						distance = (pos_list[atom1] - pos_list[atom2]).norm() - (get_gridpoint(atom1,rpnt,0) - pos_list[atom1]).norm();
-						//call cubic (2nd order polynomial) spline interpolation function to get the external potential due to atom2 at distance from its origin
-						gridpoints[atom1].potential(2,rpnt) += spline(atom2, distance);
+				for(int apnt=0; apnt<angular_points; apnt++){
+					gridpoints[atom1].potential(1,rpnt*angular_points+apnt) = 0.0; //reset external potential
+					for(int atom2=0; atom2<gridpoints.size(); atom2++){
+						//compute the external potential for all other atoms
+						if(atom1 != atom2){
+							//total distance between nuclei - distance between gridpoint and atom1 = distance between gridpoint and atom2
+							//distance = abs((pos_list[atom1] - pos_list[atom2]).norm() - (get_gridpoint(atom1,rpnt,0) - pos_list[atom1]).norm()); //take abs as gridpoint may exceed internuclear distance
+							distance = (get_gridpoint(atom1,rpnt,apnt) - pos_list[atom2]).norm(); //norm between gridpoint and origin of atom2
+							//cout << "dist: " << (pos_list[atom1] - pos_list[atom2]).norm() << "  rad:  " << (get_gridpoint(atom1,rpnt,0) - pos_list[atom1]).norm() << endl;
+							//call cubic (2nd order polynomial) spline interpolation function to get the external potential due to atom2 at distance from its origin
+							gridpoints[atom1].potential(1,rpnt*angular_points+apnt) += Poisson_spline(atom2, distance);
+						}
 					}
 				}
 			}
@@ -296,7 +318,7 @@ public:
 		static double L;
 		L = double(l*(l+1)); 
 
-		cout << "confirm static Np1: " << Np1 << " for " << (radial_points+1) << endl;
+		//cout << "confirm static Np1: " << Np1 << " for " << (radial_points+1) << endl;
 
 		for(int row=3; row<radial_points-3; row++){ //run from 4th row till N-4th row
 			//write coefficients of 7 elements
@@ -316,7 +338,7 @@ public:
 			z = Np1 * (row+4);
 			U7(row,row+3) = 2.0 * hepta_coeff(1, z) * i2 + hepta_coeff(2, z) * i1;
 		}
-
+		//cout << "end main loop U7" << endl;
 		//do rows 1,2 and N,N-1 separately as they use different finite difference expansions, 3 and N-2 to include the boundary conditions
 		
 		//row 1
@@ -396,6 +418,8 @@ public:
 		z = double(radial_points) / Np1;
 		r = (1.0 + cos(pi*z)) / (1 - cos(pi*z));
 		U7(radial_points - 1,radial_points - 1) = (-26.0/3.0) * jB * hepta_coeff(1, z) - 4.0 * Np1 * hepta_coeff(2, z) - L / pow(r,3);
+
+		//cout << "U7 init complete" << endl;
 	}
 	//calculate the non-constant ODE coefficients
 	double hepta_coeff(int tag, double z){
@@ -430,7 +454,7 @@ public:
 			default:
 			cout << "Unknown tag for ODE-coefficient auxiliary function: tag = " << tag << endl;
 			cout << "Defaulting to: tag = 1 --> [ a(z) ]" << endl;
-			return hepta_aux(2, z);
+			return hepta_aux(1, z);
 			break;
 		}
 	}
@@ -468,6 +492,8 @@ public:
 		z = double(radial_points) / Np1;
 		r = (1.0 + cos(pi*z)) / (1 - cos(pi*z));
 		U7(radial_points - 1,radial_points - 1) = (-26.0/3.0) * jB * hepta_coeff(1, z) - 4.0 * Np1 * hepta_coeff(2, z) - L / pow(r,3);
+
+		//cout << "U7 update complete" << endl;
 	}
 	//solve the matrix equation for the transformed Poisson potential
 	//{U7} is the heptadiagonal matrix from the modified Bickley finite difference scheme with dimensions rpnt x rpnt (15x15)
@@ -475,30 +501,71 @@ public:
 	//
 	//scheme will be made more efficient through simultaneously solving the equation for fixed l, for each m, since U7 != f(m)
 	//
-	void Ulm_solve(int atom, Eigen::VectorXd rho){
+	void Ulm_solve(int atom, int index){
 		//solve matrix equation: U7 * Ui = -4pi * rho
+		//cout << "commence Ulm_solve" << endl;
 		static const double pre = -4.0 * pi;
-		static Eigen::VectorXd Ui;
-		Ui = U7.colPivHouseholderQr().solve(pre*rho);
+		static const double root = sqrt(-pre);
+		static const double h = 1.0 / double(radial_points + 1);
+		static const double z = radial_points * h;
+		//Boundary condition:
+		static Eigen::VectorXd BC = Eigen::VectorXd::Zero(radial_points);
+
+		//set_point_charge(); //---> move to appropriate place, private variable, make function call
+
+		if(index == 0){
+			BC(radial_points-1) = (-25.0/12.0) * hepta_coeff(2, z) * h + hepta_coeff(1, z) * h * h * (-35.0/12.0);
+			BC(radial_points-2) = (-137.0/60.0) * hepta_coeff(2, z - h) * h - 3.75 * hepta_coeff(1, z - h) * h * h;
+			gridpoints[atom].Ulm.col(index) = U7.colPivHouseholderQr().solve(pre * gridpoints[atom].Laplace.col(index) + BC * root * get_point_charge(atom));
+		}
+		else{
+			gridpoints[atom].Ulm.col(index) = U7.colPivHouseholderQr().solve(pre * gridpoints[atom].Laplace.col(index));
+		}
 		//return Ui; ---> write to atomicgrid.Ulm
+		//cout << "Ulm_solve completed" << endl;
 	}
 	//seperate solver for Ulm | {l,m} = {0,0} --------> merge with Ulm_solve by incorporating BC in set_Poisson_L
-	void U00_solve(int atom, Eigen::VectorXd rho){
-		//solve matrix equation: U7 * Ui = -4pi * rho
-		static const double pre = -4.0 * pi;
-		static Eigen::VectorXd Ui;
-		static Eigen::VectorXd boundary; //implement correction for boundary conditions by modifying rho
+	// void U00_solve(int atom, Eigen::VectorXd rho){
+	// 	//solve matrix equation: U7 * Ui = -4pi * rho
+	// 	static const double pre = -4.0 * pi;
+	// 	static Eigen::VectorXd Ui;
+	// 	static Eigen::VectorXd boundary; //implement correction for boundary conditions by modifying rho
 
-		Ui = U7.colPivHouseholderQr().solve(pre*rho);
-		//return Ui; ---> write to atomicgrid.Ulm
-	}
-	//compute the contribution to the external Poisson potential through cubic spline interpolation
-	double spline(int atomnr, double distance){
-		static double Poisson_Ext;
-		Poisson_Ext = 0.0;
+	// 	Ui = U7.colPivHouseholderQr().solve(pre*rho);
+	// 	//return Ui; ---> write to atomicgrid.Ulm
+
+
+	// 	//Boundary condition:
+	// 	Eigen::VectorXd BC = Eigen::VectorXd::Zero(radial_points);
+	// 	BC(radial_points-1) = (-25.0/12.0) * hepta_coeff(2, z) * Np1 + hepta_coeff(1, z) * Np1 * Np1 * (-35.0/12.0);
+	// 	BC(radial_points-2) = ()
+
+	// 	//
+	// }
+	//compute the contribution to the external Poisson potential through cubic B-spline interpolation
+	double Poisson_spline(int atomnr, double distance){
 		//interpolate the Poisson potential to a point at {distance} away from the nucleus indexed by {atomnr}
-		// #include <boost/math/interpolators/cubic_b_spline.hpp>
-		return Poisson_Ext;
+		//
+		//std::vector<double> f{0.01, -0.02, 0.3, 0.8, 1.9, -8.78, -22.6}; 
+		//double t0 = 1; //variable denoting the starting point, so setting z = 0
+		//cout << "call to spline" << endl;
+		//static Eigen::VectorXd localdata; //local storage to assure proper communication of row pointer and iterator for boost::spline
+		static double z_transform;
+		//cout << gridpoints[atomnr].potential.cols() << endl;
+		Eigen::VectorXd localdata = Eigen::VectorXd::Zero(gridpoints[atomnr].potential.cols());
+		//cout << gridpoints[atomnr].potential.row(0) << endl;
+		//cout << endl << gridpoints[atomnr].Ulm << endl;
+		//cout << gridpoints[atomnr].Laplace << endl;
+		localdata = gridpoints[atomnr].potential.row(0); //vector of data
+		static const double h = 1.0/double(radial_points+1); //stepsize -------> fit the B-spline in z-domain since there the points are equispaced
+		//cout << "commence spline" << endl;
+		//cout << localdata << endl;
+		//cout << endl << endl << U7 << endl;
+		boost::math::cubic_b_spline<double> spline(localdata.data(), localdata.size(), h, h); //fit the b-spline
+		z_transform = acos((distance - 1.0)/(distance + 1.0)) / pi; //transform distance to the appropriate fractional z-value since the spline = f(z)
+		//cout << z_transform << "   " << distance << "   " << (distance - 1.0)/(distance + 1.0) << "   " << acos((distance - 1.0)/(distance + 1.0)) << endl;
+		//cout << "fit spline" << endl;
+		return spline(z_transform);
 	}
 };
 

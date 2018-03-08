@@ -26,6 +26,6 @@ typedef Eigen::Vector3d vec3; //define vec3 as the Eigen::Vector3d-object
 
 using namespace std;
 
-double HarmonicReal(int l, int m, vec3 gridpoint);
+double HarmonicReal(int l, int m, const vec3& gridpoint);
 
 #endif //_HARMONICS_H

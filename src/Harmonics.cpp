@@ -15,26 +15,26 @@ Includes testcases for: H, He, H2, HeH+, He2, CO, and H2O.
 
 #include "Harmonics.h"
 
-//change order of summation l vs m according to Press: Numerical Recipes -> spherical harmonics generating functions
-//write all coefficients as precomputed decimals, give expressions in comments
-
-double HarmonicReal(int l, int m, vec3 gridpoint){
+double HarmonicReal(int l, int m, const vec3& gridpoint){
 	static double radius, theta, phi;
 	static unsigned int ul;
 	static const double root = sqrt(2.0);
+	static double out;
 	radius = gridpoint.norm();
 	theta = acos(gridpoint[2]/radius);
-	phi = atan(gridpoint[1]/gridpoint[0]);
+	phi = atan2(gridpoint[1],gridpoint[0]);
 	ul = l; //let g++ typecasting perform conversion from int to unsigned int
-	double out = 0.0;
 	if(m == 0){
-		out = boost::math::spherical_harmonic_r(ul, m, theta, phi); //should not be r
+		out = boost::math::spherical_harmonic_r(ul, m, theta, phi); //take real component since imaginary part should be zero, avoid typecast complex
 	}
 	else if(m > 0){
 		out = root*pow(-1.0,m)*boost::math::spherical_harmonic_r(ul, m, theta, phi);
 	}
 	else{
 		out = root*pow(-1.0,m)*boost::math::spherical_harmonic_i(ul, -m, theta, phi);
+	}
+	if(isnan(out)){
+		cout << "nanerr: " << radius << "   " << theta << "   " << phi << "   " << gridpoint[1] << "   " << gridpoint[0] << "   " << gridpoint[1]/gridpoint[0] << endl;
 	}
 	return out;
 }
@@ -44,6 +44,8 @@ double HarmonicReal(int l, int m, vec3 gridpoint){
 //{l} is the degree of the real spherical harmonic (max 8)
 //{m} is the order of the l-th degree real spherical harmonic
 //{gridpoint} is the vector of {x,y,z} coordinates at which the real spherical harmonic is to be evaluated
+//
+//write all coefficients as precomputed decimals, give expressions in comments
 //
 // double HarmonicReal(int l, int m, vec3 gridpoint){
 // 	static double radius;

@@ -31,10 +31,10 @@ const bool visual = false; //process visualisation of orbitals
 //switches for setting which testcases to run
 const bool H_switch = true;                     
 const bool He_switch = true;                    
-const bool H2_switch = false;                   
-const bool HeHp_switch = false;                 //----->implement A_array in nuclear integral
-const bool He2_switch = false;                  //----->implement Poisson potential in 2e-integral
-const bool CO_switch = false;                   //----->for plot2D --> move height, width etc. from global to function, remove as arguments
+const bool H2_switch = true;                    
+const bool HeHp_switch = false;                 
+const bool He2_switch = false;                  
+const bool CO_switch = false;                   
 const bool H2O_switch = true;
 
 //define functional call for visualisation procedure
