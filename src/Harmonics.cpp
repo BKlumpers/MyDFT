@@ -28,10 +28,10 @@ double HarmonicReal(int l, int m, const vec3& gridpoint){
 		out = boost::math::spherical_harmonic_r(ul, m, theta, phi); //take real component since imaginary part should be zero, avoid typecast complex
 	}
 	else if(m > 0){
-		out = root*pow(-1.0,m)*boost::math::spherical_harmonic_r(ul, m, theta, phi);
+		out = root*boost::math::spherical_harmonic_r(ul, m, theta, phi); //*pow(-1.0,m)
 	}
 	else{
-		out = root*pow(-1.0,m)*boost::math::spherical_harmonic_i(ul, -m, theta, phi);
+		out = root*boost::math::spherical_harmonic_i(ul, -m, theta, phi); //*pow(-1.0,m)
 	}
 	if(isnan(out)){
 		cout << "nanerr: " << radius << "   " << theta << "   " << phi << "   " << gridpoint[1] << "   " << gridpoint[0] << "   " << gridpoint[1]/gridpoint[0] << endl;

@@ -29,13 +29,52 @@ using namespace std;
 const bool visual = false; //process visualisation of orbitals
 
 //switches for setting which testcases to run
-const bool H_switch = true;                     
-const bool He_switch = true;                    
+const bool H_switch = false;                     
+const bool He_switch = false;                    
 const bool H2_switch = true;                    
-const bool HeHp_switch = false;                 
-const bool He2_switch = false;                  
-const bool CO_switch = false;                   
+const bool HeHp_switch = true;                 
+const bool He2_switch = true;                  
+const bool CO_switch = true;             
 const bool H2O_switch = true;
+
+// double hepta_aux(int tag, double z){
+//     static double pi = 3.141592;
+//     switch(tag){
+//         case 1: //function a(z) = dz/dr
+//         return pow(1.0 - cos(pi*z), 2) / (-2.0*pi*sin(pi*z));
+//         break;
+//         case 2: //function b(z) = d2z/dr2 / dz/dr
+//         return (1.0 - cos(pi*z)) * (1.0 + 0.5*cos(pi*z)/pow(sin(pi*z),2));
+//         break;
+//         default:
+//         cout << "Unknown tag for ODE-coefficient auxiliary function: tag = " << tag << endl;
+//         cout << "Defaulting to: tag = 1 --> [ a(z) ]" << endl;
+//         return hepta_aux(1, z);
+//         break;
+//     }
+// }
+// double hepta_coeff(int tag, double z){
+//     static double r;
+//     static double pi = 3.141592;
+//     static double pre = 1.0/(2.0*pi);
+//     r = (1.0 + cos(pi*z)) / (1.0 - cos(pi*z)); //transform z back to r
+//     switch(tag){
+//         case 1:
+//         return pow(hepta_aux(1,z), 2) / r;
+//         break;
+//         case 2:
+//         return pre*(3*r+1)/(r*r*sqrt(r)*(r+1)*(r+1));//hepta_aux(1,z) * hepta_aux(2,z) / r;
+//         break;
+//         // case 3:
+//         // return double(l*(l+1)) / pow(r,3);
+//         // break;
+//         default:
+//         cout << "Unknown tag for ODE-coefficient function: tag = " << tag << endl;
+//         cout << "Defaulting to: tag = 1 --> [ dz/dr ]" << endl;
+//         return hepta_coeff(1, z);
+//         break;
+//     }
+// }
 
 //define functional call for visualisation procedure
 void plot2D(char const title[], double height, double width, double xmin, double xmax, double zmin, double zmax, vector<CGF> AO_list, const Eigen::MatrixXd& Coeff);
@@ -108,17 +147,24 @@ int main() {
     }
 
     //check SCF for single atom
-    // vector<CGF> AO_list1; //create object containing all atomic orbitals
-    // AO_list1.push_back(cgfHe);
-    // vector<vec3> pos_list1; //create list of nucleic positions
-    // pos_list1.push_back(pos);
-    // vector<double> charge_list1; //create list of nucleic charges
-    // charge_list1.push_back(He_Z);
-    // vector<int> nelec_list1; //create list of electrons for each atom
-    // nelec_list1.push_back(He_nelec);
-    // cout << "SCF test: " << endl;
-    // SCF_E He1_results; //create output struct for H2 SCF energy minimisation
-    // He1_results = SCF_HF_energy(AO_list1,pos_list1,charge_list1, nelec_list1); //run SCF energy minimisation and get results
+    vector<CGF> AO_list1; //create object containing all atomic orbitals
+    CGF cgfHe;
+    cgfHe.add_gto(0.15432897000000001,6.3624213899999997,0.0,0.0,0.0,pos);
+    cgfHe.add_gto(0.53532813999999995,1.1589229999999999,0.0,0.0,0.0,pos);
+    cgfHe.add_gto(0.44463454000000002,0.31364978999999998,0.0,0.0,0.0,pos);
+    AO_list1.push_back(cgfHe);
+    vector<vec3> pos_list1; //create list of nucleic positions
+    pos_list1.push_back(pos);
+    vector<double> charge_list1; //create list of nucleic charges
+    charge_list1.push_back(He_Z);
+    vector<int> nelec_list1; //create list of electrons for each atom
+    nelec_list1.push_back(He_nelec);
+    vector<int> atnum_list1 = nelec_list1; //create list of atomic numbers
+    cout << "SCF test: " << endl;
+    SCF_E He1_results; //create output struct for H2 SCF energy minimisation
+    He1_results = SCF_HF_energy(AO_list1,pos_list1,charge_list1, nelec_list1); //run SCF energy minimisation and get results
+    SCF_E He1_DFT; //create output struct for H2 DFT energy minimisation
+    He1_DFT = SCF_DFT_energy(AO_list1,pos_list1,charge_list1,nelec_list1,atnum_list1); //run SCF energy minimisation and get results
 
     if(H2_switch){
         //perform energy minimisation for H2:

@@ -163,6 +163,7 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
 
     Eigen::MatrixXd Poisson = Exchange;
     double Jp1 = 0.0;
+    double Jx = 0.0;
 
 
     //SCF-loop for energy optimisation:
@@ -230,13 +231,13 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
                             Ex += 0.75*weight*exchange_Dirac(Density)*Density; //add factor 3/4 to convert potential to energy
                             Ec += weight*correlation_VWN(Density)*Density;
                             NELEC += weight*Density;
-                            Jp1 += 0.5 * weight * Density * GCL_grid.get_Poisson(atom,rpnt);
+                            //Jp1 += 0.5 * weight * Density * GCL_grid.get_Poisson(atom,rpnt);
                             for(int i=0; i<AO_list.size(); i++){ //change nesting order, which limits the number of times the density must be computed
                                 for(int j=0; j<AO_list.size(); j++){
                                     Local = GCL_grid.get_amps(atom,rpnt,apnt,i)*GCL_grid.get_amps(atom,rpnt,apnt,j);
                                     Exchange(i,j) += weight*exchange_Dirac(Density)*Local; //Dirac exchange functional
                                     Correlation(i,j) += weight*VWN_potential(Density)*Local; //Vosko-Wilk-Nusair correlation functional
-                                    Poisson(i,j) += 0.5*weight*Local*GCL_grid.get_Poisson(atom,rpnt);
+                                    //Poisson(i,j) += 0.5*weight*Local*GCL_grid.get_Poisson(atom,rpnt);
                                 }
                             }
                         }
@@ -244,7 +245,13 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
                 }
             }
         }
-
+        // double denden=0.0;
+        // for(int i=0; i<GCL_grid.get_atomnr(); i++){
+        //     cout << "density: " << GCL_grid.get_point_charge(i) << endl;
+        //     denden += GCL_grid.get_point_charge(i);
+        // }
+        // cout <<"ttl " << denden << "    " << NELEC << endl;
+        //cout << "Poisson:" << endl << Poisson << endl;
         //Calculate Fock Matrix
         Eigen::MatrixXd Fock = Hamil + 2.0*G_two_electron + Exchange + Correlation;
         
@@ -259,10 +266,11 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
         //Calculate total electronic energy of the system
         energy = 0.0;
         // double T = 0.0;
-        double Jx = 0.0;
+        Jx = 0.0;
         // double Nx = 0.0;
         // double Pot = 0.0;
         //double Jp2 = 0.0;
+        double Pois = 0.0;
 
         Eigen::MatrixXd E_total = Hamil + G_two_electron; //non-weighted components of total electronic energy
         for(int i=0; i<AO_list.size(); i++) {
@@ -272,6 +280,7 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
                 Jx += P_density(j,i) * G_two_electron(i,j);
                 //Jp2 += P_density(j,i) * Poisson(i,j);
                 // Pot += P_density(j,i) * (Exchange(i,j) + Correlation(i,j));
+                //Pois += P_density(j,i) * Poisson(i,j);
             }
         }
         energy += (Ex + Ec); //include XC-energies
@@ -280,7 +289,7 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
         // cout << "#e: " << NELEC << endl;
         // cout << "Vxc: " << Pot << endl;
         // cout << "T: " << T << endl;
-        cout << "J: " << Jx << " vs " << Jp1 << endl; // " vs " << Jp1 << endl;
+        //cout << "J: " << Jx << " vs " << Jp1 << " vs " << Pois << endl; // " vs " << Jp1 << endl;
         // cout << "Nucl: " << Nx << endl;
         // cout << "One: " << T+Nx << endl << endl;
 
@@ -322,7 +331,39 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
     //end SCF-loop
 
     //debugging:
-
+    Jp1 = 0.0;
+    NELEC = 0.0;
+    GCL_grid.set_density(P_density);
+    GCL_grid.set_Poisson();
+    for(int rpnt=0; rpnt<GCL_grid.get_rpnt(); rpnt++){ //loop across all radial points
+        for(int apnt=0; apnt<GCL_grid.get_apnt(); apnt++){ //loop across all angular points
+            for(int atom=0; atom<GCL_grid.get_atomnr(); atom++){ //loop across all atomic grids
+                //get electron density at this gridpoint
+                Density = GCL_grid.get_density(atom, rpnt, apnt);//density(atom, rpnt, apnt, P_density, GCL_grid);
+                if(Density > DenTol){
+                    weight = GCL_grid.get_weight(atom,rpnt,apnt);
+                    NELEC += weight*Density;
+                    Jp1 += 0.5 * weight * Density * GCL_grid.get_Poisson(atom,rpnt,apnt);
+                    for(int i=0; i<AO_list.size(); i++){ //change nesting order, which limits the number of times the density must be computed
+                        for(int j=0; j<AO_list.size(); j++){
+                            Local = GCL_grid.get_amps(atom,rpnt,apnt,i)*GCL_grid.get_amps(atom,rpnt,apnt,j);
+                            Poisson(i,j) += 0.5*weight*Local*GCL_grid.get_Poisson(atom,rpnt,apnt);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    cout << "Density on atom 1:" << GCL_grid.get_point_charge(0) << endl;
+    //cout << "Density on atom 2:" << GCL_grid.get_point_charge(1) << endl;
+    cout << "P_density: " << endl << P_density << endl;
+    cout << "Poisson: " << endl << Poisson << endl;
+    cout << "J: " << endl << G_two_electron << endl;
+    cout << "Total: " << endl << Jp1 << " vs " << Jx << endl;
+    cout << "PC check: " << endl;
+    GCL_grid.PC_check(0);
+    //GCL_grid.PC_check(1);
+    
     // double Tkin = 0.0;
     // double Vnucl = 0.0;
     // double JJ = 0.0;
