@@ -30,51 +30,13 @@ const bool visual = false; //process visualisation of orbitals
 
 //switches for setting which testcases to run
 const bool H_switch = false;                     
-const bool He_switch = false;                    
+const bool He_switch = false;
+const bool mono = true;                    
 const bool H2_switch = true;                    
-const bool HeHp_switch = true;                 
-const bool He2_switch = true;                  
+const bool HeHp_switch = false;                 
+const bool He2_switch = false;                  
 const bool CO_switch = true;             
 const bool H2O_switch = true;
-
-// double hepta_aux(int tag, double z){
-//     static double pi = 3.141592;
-//     switch(tag){
-//         case 1: //function a(z) = dz/dr
-//         return pow(1.0 - cos(pi*z), 2) / (-2.0*pi*sin(pi*z));
-//         break;
-//         case 2: //function b(z) = d2z/dr2 / dz/dr
-//         return (1.0 - cos(pi*z)) * (1.0 + 0.5*cos(pi*z)/pow(sin(pi*z),2));
-//         break;
-//         default:
-//         cout << "Unknown tag for ODE-coefficient auxiliary function: tag = " << tag << endl;
-//         cout << "Defaulting to: tag = 1 --> [ a(z) ]" << endl;
-//         return hepta_aux(1, z);
-//         break;
-//     }
-// }
-// double hepta_coeff(int tag, double z){
-//     static double r;
-//     static double pi = 3.141592;
-//     static double pre = 1.0/(2.0*pi);
-//     r = (1.0 + cos(pi*z)) / (1.0 - cos(pi*z)); //transform z back to r
-//     switch(tag){
-//         case 1:
-//         return pow(hepta_aux(1,z), 2) / r;
-//         break;
-//         case 2:
-//         return pre*(3*r+1)/(r*r*sqrt(r)*(r+1)*(r+1));//hepta_aux(1,z) * hepta_aux(2,z) / r;
-//         break;
-//         // case 3:
-//         // return double(l*(l+1)) / pow(r,3);
-//         // break;
-//         default:
-//         cout << "Unknown tag for ODE-coefficient function: tag = " << tag << endl;
-//         cout << "Defaulting to: tag = 1 --> [ dz/dr ]" << endl;
-//         return hepta_coeff(1, z);
-//         break;
-//     }
-// }
 
 //define functional call for visualisation procedure
 void plot2D(char const title[], double height, double width, double xmin, double xmax, double zmin, double zmax, vector<CGF> AO_list, const Eigen::MatrixXd& Coeff);
@@ -146,25 +108,81 @@ int main() {
         cout << "He_Energy: " << 2.0*He_kinetic + 2.0*He_nuclear + He_repulsion << endl << endl;
     }
 
-    //check SCF for single atom
-    vector<CGF> AO_list1; //create object containing all atomic orbitals
-    CGF cgfHe;
-    cgfHe.add_gto(0.15432897000000001,6.3624213899999997,0.0,0.0,0.0,pos);
-    cgfHe.add_gto(0.53532813999999995,1.1589229999999999,0.0,0.0,0.0,pos);
-    cgfHe.add_gto(0.44463454000000002,0.31364978999999998,0.0,0.0,0.0,pos);
-    AO_list1.push_back(cgfHe);
-    vector<vec3> pos_list1; //create list of nucleic positions
-    pos_list1.push_back(pos);
-    vector<double> charge_list1; //create list of nucleic charges
-    charge_list1.push_back(He_Z);
-    vector<int> nelec_list1; //create list of electrons for each atom
-    nelec_list1.push_back(He_nelec);
-    vector<int> atnum_list1 = nelec_list1; //create list of atomic numbers
-    cout << "SCF test: " << endl;
-    SCF_E He1_results; //create output struct for H2 SCF energy minimisation
-    He1_results = SCF_HF_energy(AO_list1,pos_list1,charge_list1, nelec_list1); //run SCF energy minimisation and get results
-    SCF_E He1_DFT; //create output struct for H2 DFT energy minimisation
-    He1_DFT = SCF_DFT_energy(AO_list1,pos_list1,charge_list1,nelec_list1,atnum_list1); //run SCF energy minimisation and get results
+    if(mono == true){
+        //check SCF for single atom
+        vector<CGF> AO_list1; //create object containing all atomic orbitals
+        CGF cgfHe;
+        cgfHe.add_gto(0.15432897000000001,6.3624213899999997,0.0,0.0,0.0,pos);
+        cgfHe.add_gto(0.53532813999999995,1.1589229999999999,0.0,0.0,0.0,pos);
+        cgfHe.add_gto(0.44463454000000002,0.31364978999999998,0.0,0.0,0.0,pos);
+        AO_list1.push_back(cgfHe);
+        vector<vec3> pos_list1; //create list of nucleic positions
+        pos_list1.push_back(pos);
+        vector<double> charge_list1; //create list of nucleic charges
+        charge_list1.push_back(He_Z);
+        vector<int> nelec_list1; //create list of electrons for each atom
+        nelec_list1.push_back(He_nelec);
+        vector<int> atnum_list1 = nelec_list1; //create list of atomic numbers
+
+        cout << "SCF test: He " << endl << endl;
+
+        SCF_E He1_results; //create output struct for H2 SCF energy minimisation
+        He1_results = SCF_HF_energy(AO_list1,pos_list1,charge_list1, nelec_list1); //run SCF energy minimisation and get results
+        SCF_E He1_DFT; //create output struct for H2 DFT energy minimisation
+        He1_DFT = SCF_DFT_energy(AO_list1,pos_list1,charge_list1,nelec_list1,atnum_list1); //run SCF energy minimisation and get results
+
+        CGF cgfBe;
+        cgfBe.add_gto(0.15432897000000001,6.3624213899999997,0.0,0.0,0.0,pos);
+        cgfBe.add_gto(0.53532813999999995,1.1589229999999999,0.0,0.0,0.0,pos);
+        cgfBe.add_gto(0.44463454000000002,0.31364978999999998,0.0,0.0,0.0,pos);
+
+        CGF cgfBe_1S;
+        cgfBe_1S.add_gto(0.154329,30.167871,0.0,0.0,0.0,pos);
+        cgfBe_1S.add_gto(0.535328,5.495115,0.0,0.0,0.0,pos);
+        cgfBe_1S.add_gto(0.444635,1.487193,0.0,0.0,0.0,pos);
+
+        CGF cgfBe_2S;
+        cgfBe_2S.add_gto(-0.099967,1.314833,0.0,0.0,0.0,pos);
+        cgfBe_2S.add_gto(0.399513,0.305539,0.0,0.0,0.0,pos);
+        cgfBe_2S.add_gto(0.700115,0.099371,0.0,0.0,0.0,pos);
+        
+        CGF cgfBe_2PX;
+        cgfBe_2PX.add_gto(0.155916,1.314833,1.0,0.0,0.0,pos);
+        cgfBe_2PX.add_gto(0.607684,0.305539,1.0,0.0,0.0,pos);
+        cgfBe_2PX.add_gto(0.391957,0.099371,1.0,0.0,0.0,pos);
+
+        CGF cgfBe_2PY;
+        cgfBe_2PY.add_gto(0.155916,1.314833,0.0,1.0,0.0,pos);
+        cgfBe_2PY.add_gto(0.607684,0.305539,0.0,1.0,0.0,pos);
+        cgfBe_2PY.add_gto(0.391957,0.099371,0.0,1.0,0.0,pos);
+
+        CGF cgfBe_2PZ;
+        cgfBe_2PZ.add_gto(0.155916,1.314833,0.0,0.0,1.0,pos);
+        cgfBe_2PZ.add_gto(0.607684,0.305539,0.0,0.0,1.0,pos);
+        cgfBe_2PZ.add_gto(0.391957,0.099371,0.0,0.0,1.0,pos);
+
+        vector<CGF> AO_list_Be; //create object containing all atomic orbitals
+        AO_list_Be.push_back(cgfBe_1S);
+        AO_list_Be.push_back(cgfBe_2S);
+        AO_list_Be.push_back(cgfBe_2PX);
+        AO_list_Be.push_back(cgfBe_2PY);
+        AO_list_Be.push_back(cgfBe_2PZ);
+
+        vector<double> charge_list_Be; //create list of nucleic charges
+        charge_list_Be.push_back(4);
+
+        vector<int> nelec_list_Be; //create list of electrons for each atom
+        nelec_list_Be.push_back(4);
+
+        vector<int> atnum_list_Be = nelec_list_Be; //create list of atomic numbers
+
+        cout << "SCF test: Be " << endl << endl;
+
+        SCF_E Be_results; //create output struct for H2 SCF energy minimisation
+        Be_results = SCF_HF_energy(AO_list_Be,pos_list1,charge_list_Be, nelec_list_Be); //run SCF energy minimisation and get results
+        SCF_E Be_DFT; //create output struct for H2 DFT energy minimisation
+        Be_DFT = SCF_DFT_energy(AO_list_Be,pos_list1,charge_list_Be,nelec_list_Be,atnum_list_Be); //run SCF energy minimisation and get results
+    }
 
     if(H2_switch){
         //perform energy minimisation for H2:

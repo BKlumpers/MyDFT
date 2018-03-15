@@ -354,6 +354,7 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
             }
         }
     }
+    cout << "Results from Poisson integration:" << endl << "WARNING: accuracy of this method is not consistent." << endl;
     cout << "Density on atom 1:" << GCL_grid.get_point_charge(0) << endl;
     //cout << "Density on atom 2:" << GCL_grid.get_point_charge(1) << endl;
     cout << "P_density: " << endl << P_density << endl;
@@ -363,7 +364,6 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
     cout << "PC check: " << endl;
     GCL_grid.PC_check(0);
     //GCL_grid.PC_check(1);
-    
     // double Tkin = 0.0;
     // double Vnucl = 0.0;
     // double JJ = 0.0;

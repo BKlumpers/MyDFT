@@ -135,6 +135,7 @@ void grid::set_Poisson_L(){
 				//loop over all other atoms and interpolate over their atomic grids the radial potential
 				//then multiply this with the HarmonicReal computed for their Cartesian coord. - atompos(atom2) to get the Ylm term -> finally divide by distance
 				//---> do all of this in Poisson_E -> call this function here
+				//---> is this necessary since Ulm are all stored for each grid anyway...
 
 
 				for(int rpnt=0; rpnt<radial_points; rpnt++){
@@ -152,6 +153,7 @@ void grid::set_Poisson_L(){
 //compute the external Poisson potential at all points using spline interpolation
 void grid::set_Poisson_E(){
 	static double distance;
+	static int lm;
 
 	for(int atom1=0; atom1<gridpoints.size(); atom1++){
 		for(int rpnt=0; rpnt<radial_points; rpnt++){ //loop across all the radial points of atom1 to get external potential at each of these points
@@ -165,7 +167,12 @@ void grid::set_Poisson_E(){
 						distance = (get_gridpoint(atom1,rpnt,apnt) - pos_list[atom2]).norm(); //norm between gridpoint and origin of atom2
 						//cout << "dist: " << (pos_list[atom1] - pos_list[atom2]).norm() << "  rad:  " << (get_gridpoint(atom1,rpnt,0) - pos_list[atom1]).norm() << endl;
 						//call cubic (2nd order polynomial) spline interpolation function to get the external potential due to atom2 at distance from its origin
-
+						for(int l=0; l<lmax+1; l++){
+							for(int m=-l; m<l+1; m++){
+								lm = lm_index(l,m);
+								gridpoints[atom1].potential(1,rpnt*angular_points+apnt) += lazy_spline(atom2, distance, lm) * HarmonicReal(l,m,get_gridpoint(atom1,rpnt,apnt) - pos_list[atom2]) / distance;
+							}
+						}
 						//gridpoints[atom1].potential(1,rpnt*angular_points+apnt) += Poisson_spline(atom2, distance);
 						//gridpoints[atom1].potential(1,rpnt*angular_points+apnt) += lazy_spline(atom2, distance);
 					}
@@ -366,19 +373,35 @@ void grid::Ulm_solve(int atom, int index){
 	static const double root = sqrt(-pre);
 	static const double h = 1.0 / double(radial_points + 1);
 	static const double z = radial_points * h;
-	static const double BC1 = -11.0 * hepta_coeff(1, z) / (12.0 * h * h) - 3.0 * hepta_coeff(2, z) / (12.0 * h); //U_N+1 term of U_N
-	static const double BC2 = hepta_coeff(1, z - h) / (12.0 * h * h) + 3.0 * hepta_coeff(2, z - h) / (60.0 * h); //U_N+1 term of U_N-1
+	// static const double BC1 = (-11.0 * hepta_coeff(1, z) / (12.0 * h * h)) - 3.0 * (hepta_coeff(2, z) / (12.0 * h)); //U_N+1 term of U_N
+	// static const double BC2 = (hepta_coeff(1, z - h) / (12.0 * h * h)) + 3.0 * (hepta_coeff(2, z - h) / (60.0 * h)); //U_N+1 term of U_N-1
+	// static const double BC3 = -2.0 * (hepta_coeff(1, z - 2.0*h) / (180.0 * h * h)) - (hepta_coeff(2, z - 2.0*h) / (60 * h)); //U_N+1 term of U_N-2
+	static const double BC1 = (-11.0 * hepta_coeff(1, h) / (12.0 * h * h)) + 3.0 * (hepta_coeff(2, h) / (12.0 * h)); //U_N+1 term of U_N
+	static const double BC2 = (hepta_coeff(1, 2.0*h) / (12.0 * h * h)) - 3.0 * (hepta_coeff(2, 2.0*h) / (60.0 * h)); //U_N+1 term of U_N-1
+	static const double BC3 = -2.0 * (hepta_coeff(1, 3.0*h) / (180.0 * h * h)) + (hepta_coeff(2, 3.0*h) / (60 * h)); //U_N+1 term of U_N-2
 	//Boundary condition:
 	static Eigen::VectorXd BC = Eigen::VectorXd::Zero(radial_points); //VectorXd initialises as a column-vector
 
 	if(index == 0){
-		BC(radial_points-1) = BC1;
-		BC(radial_points-2) = BC2;
+		//BC(radial_points-1) = BC1;
+		//BC(radial_points-2) = BC2;
+		//BC(radial_points-3) = BC3;
+		BC(0) = BC1; //apply BCs in reverse since r->inf :: z->0 /\ r->0 :: z -> 1
+		BC(1) = BC2;
+		BC(2) = BC3;
 		gridpoints[atom].Ulm.col(index) = U7.colPivHouseholderQr().solve(pre * gridpoints[atom].Laplace.col(index) + BC * root * get_point_charge(atom));
+		//cout << "rhovec " << endl << pre * gridpoints[atom].Laplace.col(index) << endl;
+		//cout << endl << "b: " << endl << gridpoints[atom].Ulm.col(index) << endl;
+		//cout << endl << "rev " << endl << (BC * root * get_point_charge(atom)).colwise().reverse() << endl;
 	}
 	else{
 		gridpoints[atom].Ulm.col(index) = U7.colPivHouseholderQr().solve(pre * gridpoints[atom].Laplace.col(index));
 	}
+	// cout << "rhovec " << endl << pre * gridpoints[atom].Laplace.col(index) << endl;
+	// cout << endl << "b: " << endl << gridpoints[atom].Ulm.col(index) << endl;
+	// cout << endl << "BC " << endl << BC * root * get_point_charge(atom) << endl;
+	// cout << endl << "corr " << endl << pre * gridpoints[atom].Laplace.col(index) + BC * root * get_point_charge(atom) << endl;
+	// cout << endl << "check " << endl << U7 * gridpoints[atom].Ulm.col(index) << endl << endl;
 }
 
 //compute the contribution to the external Poisson potential through cubic B-spline interpolation
@@ -406,7 +429,30 @@ double grid::Poisson_spline(int atomnr, double distance){
 	return spline(z_transform*angular_points);
 }
 
-double grid::lazy_spline(int atomnr, double distance){
+// double grid::lazy_spline(int atomnr, double distance){
+// 	static const double h = 1.0 / double(radial_points + 1);
+// 	static double z_transform;
+// 	static double z_index;
+// 	static int index1;
+// 	static int index2;
+// 	static double avg;
+
+// 	z_transform = acos((distance - 1.0)/(distance + 1.0)) / pi; //transform r to z-coordinate
+// 	z_index = z_transform / h; //get the number of integer steps that need to be taken to get to this point -> extract j
+// 	index1 = int(std::floor(z_index)); //get the point just below the radial point
+// 	index2 = int(std::ceil(z_index));  //get the point just above the radial point
+// 	if(index1 < 0){
+// 		index1 == 0; 
+// 	}
+// 	// if(index2 < index1){
+// 	// 	index2 == index1 + 1;
+// 	// }
+
+// 	avg =  0.5 * (gridpoints[atomnr].potential(0,index1*angular_points) + gridpoints[atomnr].potential(0, index2*angular_points)); //just take the average...
+// 	cout << "spline: " << index1 << "   " << index2 << "    " << z_index << "    " << avg << endl;
+// 	return avg;
+// }
+double grid::lazy_spline(int atomnr, double distance, int lm){
 	static const double h = 1.0 / double(radial_points + 1);
 	static double z_transform;
 	static double z_index;
@@ -419,17 +465,16 @@ double grid::lazy_spline(int atomnr, double distance){
 	index1 = int(std::floor(z_index)); //get the point just below the radial point
 	index2 = int(std::ceil(z_index));  //get the point just above the radial point
 	if(index1 < 0){
-		index1 == 0; 
+		index1 == 0;
 	}
 	// if(index2 < index1){
 	// 	index2 == index1 + 1;
 	// }
 
-	avg =  0.5 * (gridpoints[atomnr].potential(0,index1*angular_points) + gridpoints[atomnr].potential(0, index2*angular_points)); //just take the average...
-	cout << "spline: " << index1 << "   " << index2 << "    " << z_index << "    " << avg << endl;
+	avg =  0.5 * (gridpoints[atomnr].Ulm(index1,lm) + gridpoints[atomnr].Ulm(index2, lm)); //just take the average...
+	//cout << "spline: " << index1 << "   " << index2 << "    " << z_index << "    " << avg << endl;
 	return avg;
 }
-
 
 
 

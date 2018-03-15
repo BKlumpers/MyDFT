@@ -247,7 +247,7 @@ public:
 	//compute the contribution to the external Poisson potential through cubic B-spline interpolation
 	double Poisson_spline(int atomnr, double distance);
 
-	double lazy_spline(int atomnr, double distance);
+	double lazy_spline(int atomnr, double distance, int lm);
 
 };
 
