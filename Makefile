@@ -1,5 +1,5 @@
 # set compiler and compile options
-EXEC = hf
+EXEC = mydft
 CXX = g++                             # use the GNU C++ compiler
 OPTS =   -fopenmp	  				  # use openmp
 CFLAGS = $(OPTS)                      # add compile flags
@@ -24,7 +24,7 @@ else
 endif
 
 # add here the source files for the compilation
-SOURCES = hf.cpp integrals.cpp solvers.cpp prelim_math.cpp dft.cpp quadrature.cpp lebedev.cpp Harmonics.cpp
+SOURCES = mydft.cpp prelim_math.cpp integrals.cpp hf.cpp dft.cpp quadrature.cpp lebedev.cpp Harmonics.cpp uhf.cpp udft.cpp
 
 # create the obj variable by substituting the extension of the sources
 # and adding a path

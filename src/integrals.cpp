@@ -1,6 +1,6 @@
 /*****************************************************************
 
-Basic closed-shell spin-restricted DFT-solver for simple molecules using STO-NG
+MYDFT: Basic DFT-solver for simple molecules using STO-NG
 
 Authors: B. Klumpers
          I.A.W. Filot
@@ -8,8 +8,9 @@ Authors: B. Klumpers
 Published under GNU General Public License 3.0
 Source code available at: https://github.com/BKlumpers/dft
 
-Allows for SCF-computation of molecular energies for simple molecules.
-Includes testcases for: H, He, H2, HeH+, He2, CO, and H2O.
+Allows for SCF-computation of molecular energies for simple molecules
+using both HF and DFT. Supports both closed and open shell systems.
+Includes testcases for: H, He, H2, HeH+, HeH, He2, CO, and H2O.
 
 *****************************************************************/
 
@@ -240,6 +241,8 @@ double two_electronGTO(GTO GTO1, GTO GTO2, GTO GTO3, GTO GTO4)
     //     }
     // }
     
+    //more efficient evaluation:
+
     //Bx
     int imaxX = GTO1.a+GTO2.a+GTO3.a+GTO4.a + 1;
     vector<double> Bx(imaxX,0);
@@ -374,7 +377,7 @@ double two_electronCGF(CGF CGF1, CGF CGF2, CGF CGF3, CGF CGF4)
     return electric;
 }
 
-//sort indices of the 2e-integral using symmetry
+//sort indices of the 2e-integral using symmetry (reverse library sorting)
 int two_electronSort(int i, int j, int k, int l)
 {
     if(i < j) {

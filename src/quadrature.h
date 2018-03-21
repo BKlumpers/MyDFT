@@ -1,25 +1,23 @@
 /*****************************************************************
 
-Basic closed-shell spin-restricted DFT-solver for simple molecules using STO-NG
+MYDFT: Basic DFT-solver for simple molecules using STO-NG
 
 Authors: B. Klumpers
-		 I.A.W. Filot
+         I.A.W. Filot
 
 Published under GNU General Public License 3.0
 Source code available at: https://github.com/BKlumpers/dft
 
-Allows for SCF-computation of molecular energies for simple molecules.
-Includes testcases for: H, He, H2, HeH+, He2, CO, and H2O.
+Allows for SCF-computation of molecular energies for simple molecules
+using both HF and DFT. Supports both closed and open shell systems.
+Includes testcases for: H, He, H2, HeH+, HeH, He2, CO, and H2O.
 
 *****************************************************************/
 
 #ifndef _QUADRATURE_H
 #define _QUADRATURE_H
 
-//Poisson potential should be per unique 2e-integral ---> how to do the storage?   ----> NOT NEEDED! alleviate {k,l} summation through commutivity of densities
-
 #include <iostream>
-#include <fstream>
 #include <cmath>
 #include <vector>
 #include <Eigen/Dense>
@@ -32,6 +30,8 @@ typedef Eigen::Vector3d vec3; //define vec3 as the Eigen::Vector3d-object
 
 using namespace std;
 
+const bool Bragg = false; //set whether to include scaling of the radial grid according to modified Slater-Bragg radii
+
 //object for atomic integration grid
 //{gridpoints} matrix[3,m] with each column m representing a gridpoint with its {x,y,z}-coordinates stored in the 3 rows
 //{amps} matrix[N+1,m] with each row containing the amplitudes of 1 basis function at each of the aforementioned m gridpoints
@@ -43,14 +43,17 @@ class atomicgrid {
 public:
 	Eigen::MatrixXd gridpoints;
 	Eigen::MatrixXd amps;
+	Eigen::MatrixXd spin;
 	Eigen::MatrixXd Laplace;
 	Eigen::MatrixXd Ulm;
 	Eigen::MatrixXd potential;
 	double point_charge;
+	double Slater;
 	//class constructor
 	atomicgrid(int radial_points, int angular_points, int Basis, int lmttl){
 		gridpoints = Eigen::MatrixXd::Zero(3, radial_points*angular_points); //create empty atomic grid
 		amps = Eigen::MatrixXd::Zero(Basis+1, radial_points*angular_points); //create empty amplitude and density maps
+		spin = Eigen::MatrixXd::Zero(2, radial_points*angular_points); //store alpha and beta densities
 		//make Laplace contain 2nd index for each l,m couple; first index along radii
 		Laplace = Eigen::MatrixXd::Zero(radial_points, lmttl);
 		//make potential contain internal + external potentials, for each gridpoint
@@ -76,6 +79,7 @@ private:
 	int lmttl, lmax, angular_index;
 	int radial_points, angular_points; //store number of radial and angular gridpoints respectively
 	Eigen::MatrixXd weights; //Matrix containing the weights, first index is the nucleic label, second is the gridpoint-label
+	Eigen::MatrixXd Gauss;
 	vector<atomicgrid> gridpoints; //vector containing the atomic grid, index runs across the nucleic labels
 	Eigen::MatrixXd U7; //heptadiagonal matrix storage for computation of the radial Poisson potential
 	vector<vec3> pos_list; //need the nucleic coordinates for spline interpolation of the external Poisson potentials
@@ -94,6 +98,7 @@ public:
 		}
 		atomicgrid emptygrid(radial_points, angular_points, Basis, lmttl); //create empty atomic grid
 		weights = Eigen::MatrixXd::Zero(pos_list.size(), radial_points*angular_points); //create empty matrix for the weights
+		Gauss = weights;
 		for(int i=0; i<pos_list.size(); i++){
 			gridpoints.push_back(emptygrid); //initialise an empty atomic grid for each atom
 		}
@@ -129,7 +134,8 @@ public:
 	void Gauss_weight(int atomnr, int radial, int angular, double weight){
 		static int index;
 		index = radial*angular_points + angular;
-		weights(atomnr, index) *= weight;
+		weights(atomnr, index) *= weight; //apply Gauss weight
+		Gauss(atomnr, index) = weight; //store Gauss weight
 	}
 	//write all the wave-function amplitudes to atomicgrid
 	void write_amps(vector<CGF> AO_list);
@@ -141,9 +147,23 @@ public:
 	//write values for the electron density
 	void set_density(const Eigen::MatrixXd& Pmatrix);
 
+	//write values in spin-polarised systems
+	void set_density(const Eigen::MatrixXd& P_alpha, const Eigen::MatrixXd& P_beta); //function overload
+
 	//retrieve value of the density at specified gridpoint
 	double get_density(int atomnr, int radial, int angular){
 		return gridpoints[atomnr].amps(gridpoints[atomnr].amps.rows()-1, radial*angular_points + angular);
+	}
+	//retrieve alpha/beta density in case of spin polarisation
+	double get_density(int atomnr, int radial, int angular, bool ab){ //function overload
+		static int id = 0;
+		if(ab){
+			id = 0; //get alpha density
+		}
+		if(!ab){
+			id = 1; //get beta density
+		}
+		return gridpoints[atomnr].spin(id, radial*angular_points + angular);
 	}
 	//retrieve point-charge potential of specified atomic grid
 	double get_point_charge(int atomnr){
@@ -160,6 +180,20 @@ public:
 	//retrieve number of atomic grids
 	int get_atomnr(){
 		return gridpoints.size();
+	}
+	//retrieve Gauss weight of the gridpoint
+	double get_Gauss(int atnum, int rpnt, int apnt){
+		static int index;
+		index = rpnt*angular_points + apnt;
+		return Gauss(atnum, index);
+	}
+	//store value of the SlaterBragg radius
+	void set_Slater(int atomnr, double SlaterBragg){
+		gridpoints[atomnr].Slater = SlaterBragg;
+	}
+	//get Slater-Bragg radius belonging to the nuclei {atomnr}
+	double get_Slater(int atomnr){
+		return gridpoints[atomnr].Slater;
 	}
 
 	//*******************************************
@@ -184,14 +218,8 @@ public:
 	//compute both local and external Poisson potentials
 	void set_Poisson(){
 		set_Laplace(); //compute the Laplace coefficients
-		//cout << "Laplace is set" << endl;
 		set_Poisson_L(); //set local Poisson potential
-		//cout << "set local" << endl;
 		set_Poisson_E(); //set external Poisson potential
-		//cout << "set ext;" << endl;
-		std::ofstream file("Poisson.txt"); //set file as output stream
-    	file << gridpoints[0].potential << '\n'; //write image to file
-		//cout << "Poisson: " << endl << gridpoints[0].potential << endl;
 	}
 	//retrieve value of the Poisson potential at the point specified by atom, rpnt
 	double get_Poisson(int atomnr, int rpnt, int apnt){
@@ -205,48 +233,25 @@ public:
 
 	//generate the heptadiagonal matrix
 	//{l} is the degree of the associated real spherical harmonic
-	void set_hepta(int l);
+	void set_hepta(int l, int atomnr);
 
 	//calculate the non-constant ODE coefficients
-	double hepta_coeff(int tag, double z);
-
-	//auxiliary functions for the ODE coefficients
-	double hepta_aux(int tag, double z);
+	double hepta_coeff(int tag, double z, double Slater);
 
 	//update the harmonic dependency of the heptadiagonal matrix only
 	//when changing l, only a small part of U7 changes
-	//updat only these terms -> diagonals
-	void update_hepta(int l);
+	//update only these terms -> diagonals
+	void update_hepta(int l, int atomnr);
 
 	//solve the matrix equation for the transformed Poisson potential
 	//{U7} is the heptadiagonal matrix from the modified Bickley finite difference scheme with dimensions rpnt x rpnt (15x15)
 	//{rho} is the vector of Laplace coefficients for a specific {l,m} at each radial point, so a vector[rpnt] | {l,m}
 	//
-	//scheme will be made more efficient through simultaneously solving the equation for fixed l, for each m, since U7 != f(m)
-	//
 	void Ulm_solve(int atom, int index);
 
-	//seperate solver for Ulm | {l,m} = {0,0} --------> merge with Ulm_solve by incorporating BC in set_Poisson_L
-	// void U00_solve(int atom, Eigen::VectorXd rho){
-	// 	//solve matrix equation: U7 * Ui = -4pi * rho
-	// 	static const double pre = -4.0 * pi;
-	// 	static Eigen::VectorXd Ui;
-	// 	static Eigen::VectorXd boundary; //implement correction for boundary conditions by modifying rho
-
-	// 	Ui = U7.colPivHouseholderQr().solve(pre*rho);
-	// 	//return Ui; ---> write to atomicgrid.Ulm
-
-
-	// 	//Boundary condition:
-	// 	Eigen::VectorXd BC = Eigen::VectorXd::Zero(radial_points);
-	// 	BC(radial_points-1) = (-25.0/12.0) * hepta_coeff(2, z) * Np1 + hepta_coeff(1, z) * Np1 * Np1 * (-35.0/12.0);
-	// 	BC(radial_points-2) = ()
-
-	// 	//
-	// }
 	//compute the contribution to the external Poisson potential through cubic B-spline interpolation
-	double Poisson_spline(int atomnr, double distance);
-
+	double Poisson_spline(int atomnr, double distance, int lm);
+	//alternative: linear interpolation
 	double lazy_spline(int atomnr, double distance, int lm);
 
 };

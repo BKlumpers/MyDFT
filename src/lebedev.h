@@ -1,4 +1,11 @@
 /**************************************************************************
+*   File adapted with permission from the author.
+*   Original license information is given below.
+*
+*
+**************************************************************************/
+
+/**************************************************************************
  *   quadrature.h  --  This file is part of DFTCXX.                       *
  *                                                                        *
  *   Copyright (C) 2016, Ivo Filot                                        *

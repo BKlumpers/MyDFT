@@ -1,4 +1,11 @@
 /**************************************************************************
+*	File adapted with permission from the author.
+*	Original license information is given below.
+*
+*
+**************************************************************************/
+
+/**************************************************************************
  *   quadrature.cpp  --  This file is part of DFTCXX.                     *
  *                                                                        *
  *   Copyright (C) 2016, Ivo Filot                                        *
@@ -22,5 +29,7 @@
 #include "lebedev.h"
 
 constexpr unsigned int Lebedev::num_lebedev_points[11];
-//constexpr unsigned int Lebedev::lebedev_order[11];
 constexpr double Lebedev::lebedev_coefficients[][4];
+
+//End of file
+//****************************************************************
