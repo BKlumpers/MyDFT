@@ -159,6 +159,9 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
     cout << "Writing wavefunctions: " << AO_list.size() << endl;
     //add line for setting wavefunction amplitudes
     GCL_grid.write_amps(AO_list);
+    if(GGA){
+        GCL_grid.write_gradient(AO_list); //write wavefunction derivatives for GGA
+    }
     cout << "Finished generating grid;" << endl;
 
     if(Poisson && Quadrature){
@@ -169,6 +172,7 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
     cout << "Iter./Energy;" << endl;
 
     double tempos1, tempos2;
+    Eigen::VectorXd tempos = Eigen::VectorXd::Zero(6);
 
     //SCF-loop for energy optimisation:
     while(energy_difference > TolEnergy && loop_counter < loop_max) {
@@ -225,6 +229,9 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
             Exchange = Eigen::MatrixXd::Zero(Exchange.rows(), Exchange.cols()); //reset XC-matrices
             Correlation = Eigen::MatrixXd::Zero(Correlation.rows(), Correlation.cols());
             GCL_grid.set_density(P_density); //update electron density map
+            if(GGA){
+                GCL_grid.set_gradient(P_density); //only write gradients for GGA
+            }
             if(Poisson){
                 G_two_electron = Exchange; //reset matrix
                 GCL_grid.set_Poisson(); //update the Poisson potential
@@ -236,11 +243,21 @@ SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const ve
                         Density = GCL_grid.get_density(atom, rpnt, apnt);//density(atom, rpnt, apnt, P_density, GCL_grid);
                         if(Density > DenTol){
                             weight = GCL_grid.get_weight(atom,rpnt,apnt);
-                            Ex += 0.75*weight*exchange_Dirac(Density)*Density; //add factor 3/4 to convert potential to energy
-                            Ec += weight*correlation_VWN(Density)*Density;
+                            if(GGA && loop_counter > 1){
+                                tempos = PBE(Density*0.5, Density*0.5, 0.5*GCL_grid.get_gradient(atom, rpnt, apnt), 0.5*GCL_grid.get_gradient(atom, rpnt, apnt), 0.5*GCL_grid.get_hessian(atom, rpnt, apnt), 0.5*GCL_grid.get_hessian(atom, rpnt, apnt));
+                                Ex += weight*tempos[0]*Density;
+                                Ec += weight*tempos[1]*Density;
+                                tempos1 = weight * (tempos[2] + tempos[3]); //exchange potential
+                                tempos2 = weight * (tempos[4] + tempos[5]); //correlation potential
+                            }
+                            else{
+                                tempos1 = weight*exchange_Dirac(Density);
+                                tempos2 = weight*VWN_potential(Density);
+                                Ex += 0.75*tempos1*Density; //add factor 3/4 to convert potential to energy
+                                Ec += weight*correlation_VWN(Density)*Density;
+                            }
                             NELEC += weight*Density;
-                            tempos1 = weight*exchange_Dirac(Density);
-                            tempos2 = weight*VWN_potential(Density);
+                            
                             for(int i=0; i<AO_list.size(); i++){ //change nesting order, which limits the number of times the density must be computed
                                 for(int j=0; j<AO_list.size(); j++){
                                     Local = GCL_grid.get_amps(atom,rpnt,apnt,i)*GCL_grid.get_amps(atom,rpnt,apnt,j);

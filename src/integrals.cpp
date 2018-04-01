@@ -397,5 +397,60 @@ int two_electronSort(int i, int j, int k, int l)
     return ij * (ij + 1) / 2 + kl; //map ij,kl->(ijkl) compound index
 }
 
+//****************************************************************
+//Extension of the above GTO-integrals to include terms for determining Wavefunction Forces
+
+//compute overlap between GTO2 and the derivative of GTO1 w.r.t atomic coordinates
+//returns vector of d/drx, d/dry, d/drz
+vec3 overlapDerivGTO(GTO GTO1, GTO GTO2)
+{
+    vec3 out;
+    GTO GTOplus = GTO1;
+    GTO GTOmin = GTO1;
+    GTOplus.a++;
+    GTOmin.a--;
+    if(GTO1.a == 0){
+        out[0] = 2.0*GTO1.alpha*overlapGTO(GTOplus,GTO2); //deriv to x
+    }
+    else{
+        out[0] = 2.0*GTO1.alpha*overlapGTO(GTOplus,GTO2) - GTO1.a*overlapGTO(GTOmin,GTO2); //deriv to x
+    }
+    
+    GTOplus.a--;
+    GTOmin.a++;
+    GTOplus.b++;
+    GTOmin.b--;
+    if(GTO1.b == 0){
+        out[1] = 2.0*GTO1.alpha*overlapGTO(GTOplus,GTO2); //deriv to y
+    }
+    else{
+        out[1] = 2.0*GTO1.alpha*overlapGTO(GTOplus,GTO2) - GTO1.b*overlapGTO(GTOmin,GTO2); //deriv to y
+    }
+    GTOplus.b--;
+    GTOmin.b++;
+    GTOplus.c++;
+    GTOmin.c--;
+    if(GTO1.c == 0){
+        out[2] = 2.0*GTO1.alpha*overlapGTO(GTOplus,GTO2); //deriv to z
+    }
+    else{
+        out[2] = 2.0*GTO1.alpha*overlapGTO(GTOplus,GTO2) - GTO1.c*overlapGTO(GTOmin,GTO2); //deriv to z
+    }
+    return out;
+}
+
+//compute overlap between CGF2 and the derivative of CGF1 w.r.t atomic coordinates
+//returns vector of d/drx, d/dry, d/drz
+vec3 overlapDerivCGF(CGF CGF1, CGF CGF2){
+    vec3 out;
+    out << 0.0,0.0,0.0;
+    for(int w=0; w<CGF1.get_size(); w++){
+        for(int v=0; v<CGF2.get_size(); v++){
+            out += CGF1.coeff[w]*CGF2.coeff[v]*overlapDerivGTO(CGF1.GTOlist[w], CGF2.GTOlist[v]);
+        }
+    }
+}
+
 //End of file
 //****************************************************************
+

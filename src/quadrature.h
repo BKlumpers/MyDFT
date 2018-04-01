@@ -32,6 +32,43 @@ using namespace std;
 
 const bool Bragg = false; //set whether to include scaling of the radial grid according to modified Slater-Bragg radii
 
+class Hessian{
+private:
+	Eigen::MatrixXd Hess = Eigen::MatrixXd::Zero(3,3);
+public:
+	void set_Hess(const Eigen::MatrixXd& H){
+		Hess = H;
+	}
+	Eigen::MatrixXd get_Hess(){ //function overload
+		return Hess;
+	}
+	double get_Hess(int i, int j){
+		return Hess(i,j);
+	}
+};
+
+//Hessian of wavefunction element ij, for each of the gridpoints
+class waveHess{
+private:
+	vector<Hessian> Hessians;
+public:
+	waveHess(int pts){
+		Hessian Hess;
+		for(int i=0; i<pts; i++){
+			Hessians.push_back(Hess);
+		}
+	}
+	void set_Hess(int idx, const Eigen::MatrixXd& H){
+		Hessians[idx].set_Hess(H);
+	}
+	double get_Hess(int idx, int i, int j){ //function overload
+		return Hessians[idx].get_Hess(i,j);
+	}
+	Eigen::MatrixXd get_Hess(int idx){
+		return Hessians[idx].get_Hess();
+	}
+};
+
 //object for atomic integration grid
 //{gridpoints} matrix[3,m] with each column m representing a gridpoint with its {x,y,z}-coordinates stored in the 3 rows
 //{amps} matrix[N+1,m] with each row containing the amplitudes of 1 basis function at each of the aforementioned m gridpoints
@@ -41,25 +78,52 @@ const bool Bragg = false; //set whether to include scaling of the radial grid ac
 //{potential} contains the local and external Poisson potential at each radial point; matrix[2, radial_points], 1st row local, 2nd row external
 class atomicgrid {
 public:
-	Eigen::MatrixXd gridpoints;
-	Eigen::MatrixXd amps;
-	Eigen::MatrixXd spin;
-	Eigen::MatrixXd Laplace;
-	Eigen::MatrixXd Ulm;
-	Eigen::MatrixXd potential;
+	Eigen::MatrixXd gridpoints; //3xPts matrix contain {x,y,z} of each point on the grid
+	Eigen::MatrixXd amps; //N+1 x Pts matrix containing tha amplitudes of each of the N wavefunctions at each point, final row stores densities
+	Eigen::MatrixXd spin; //2xPts matrix containing alpha and beta densities at each point
+	Eigen::MatrixXd Laplace; //rpnt x ns contains the values for the spherical decompositions of the radial density for each radial shell
+	Eigen::MatrixXd Ulm; //contains the radial part of the internal Poisson potential
+	Eigen::MatrixXd potential; //contains the internal and external Poisson potentials
+	Eigen::MatrixXd gradients_x; //contains the value of the wavefunction derivatives at each point, for each basis function couple ij: N*N x pts
+	Eigen::MatrixXd gradients_y;
+	Eigen::MatrixXd gradients_z;
+	Eigen::MatrixXd gradients_norm;
+	Eigen::MatrixXd PBE; //contains the value of the density gradient at each point
+	Eigen::MatrixXd PBEC; //contains the value of the alpha and beta gradients at each point
+	vector<Hessian> rho_Hess; //contain the Hessian of the density at each point
+	vector<Hessian> alpha_Hess;
+	vector<Hessian> beta_Hess;
+	vector<waveHess> wave_Hess; //contain a vector of ij Hessians at each point
 	double point_charge;
 	double Slater;
 	//class constructor
 	atomicgrid(int radial_points, int angular_points, int Basis, int lmttl){
-		gridpoints = Eigen::MatrixXd::Zero(3, radial_points*angular_points); //create empty atomic grid
-		amps = Eigen::MatrixXd::Zero(Basis+1, radial_points*angular_points); //create empty amplitude and density maps
-		spin = Eigen::MatrixXd::Zero(2, radial_points*angular_points); //store alpha and beta densities
+		int pts = radial_points*angular_points;
+		gridpoints = Eigen::MatrixXd::Zero(3, pts); //create empty atomic grid
+		amps = Eigen::MatrixXd::Zero(Basis+1, pts); //create empty amplitude and density maps
+		spin = Eigen::MatrixXd::Zero(2, pts); //store alpha and beta densities
 		//make Laplace contain 2nd index for each l,m couple; first index along radii
 		Laplace = Eigen::MatrixXd::Zero(radial_points, lmttl);
 		//make potential contain internal + external potentials, for each gridpoint
-		potential = Eigen::MatrixXd::Zero(2, radial_points*angular_points);
+		potential = Eigen::MatrixXd::Zero(2, pts);
 		//Ulm has the same dimensions as Laplace
 		Ulm = Laplace; //same initialisation
+		gradients_x = Eigen::MatrixXd::Zero(Basis*Basis,pts);
+		gradients_y = Eigen::MatrixXd::Zero(Basis*Basis,pts);
+		gradients_z = Eigen::MatrixXd::Zero(Basis*Basis,pts);
+		gradients_norm = Eigen::MatrixXd::Zero(Basis*Basis,pts);
+		PBE = Eigen::MatrixXd::Zero(4,pts); //first 3 rows contain x,y,z; final row contains norm
+		PBEC = Eigen::MatrixXd::Zero(8,pts); //first 4 rows contain alpha, second block contains beta
+		Hessian Hess;
+		for(int i=0; i<pts; i++){
+			rho_Hess.push_back(Hess); //store 1 Hessian per point
+			alpha_Hess.push_back(Hess);
+			beta_Hess.push_back(Hess);
+		}
+		waveHess wave(pts);
+		for(int i=0; i<Basis*Basis; i++){
+			wave_Hess.push_back(wave); //store i*j Hessians per point
+		}
 	}
 };
 
@@ -194,6 +258,86 @@ public:
 	//get Slater-Bragg radius belonging to the nuclei {atomnr}
 	double get_Slater(int atomnr){
 		return gridpoints[atomnr].Slater;
+	}
+	//compute the wavefunction gradients and Hessians at each point
+	void write_gradient(vector<CGF> AO_list);
+
+	//compute the density gradient and Hessian at each point
+	void set_gradient(const Eigen::MatrixXd& Pmatrix);
+
+	//comput the alpha and beta gradients and Hessians at each point
+	void set_gradient(const Eigen::MatrixXd& P_alpha, const Eigen::MatrixXd& P_beta); //function overload
+
+	//get density gradient
+	//{element} = {0,1,2,3} <> {x,y,z,norm}
+	double get_gradient(int atom, int rpnt, int apnt, int element){
+		static double index;
+		index = rpnt*angular_points + apnt;
+		return gridpoints[atom].PBE(element, index);
+	}
+	//get alpha or beta density gradient
+	//{element} = {0,1,2,3} <> {x,y,z,norm}
+	double get_gradient(int atom, int rpnt, int apnt, int element, bool ab){ //function overload
+		static int id = 0;
+		if(ab){
+			id = 0; //get alpha density
+		}
+		if(!ab){
+			id = 4; //get beta density
+		}
+		return gridpoints[atom].PBEC(id+element, rpnt*angular_points + apnt);
+	}
+	Eigen::VectorXd get_gradient(int atom, int rpnt, int apnt){
+		static double index;
+		index = rpnt*angular_points + apnt;
+		return gridpoints[atom].PBE.col(index);
+	}
+	Eigen::VectorXd get_gradient(int atom, int rpnt, int apnt, bool ab){
+		Eigen::VectorXd id = Eigen::VectorXd::Zero(4);
+		static int index;
+		index = rpnt*angular_points + apnt;
+		if(ab){
+			id << gridpoints[atom].PBEC(0,index),gridpoints[atom].PBEC(1,index),gridpoints[atom].PBEC(2,index),gridpoints[atom].PBEC(3,index); //get alpha density
+		}
+		if(!ab){
+			id << gridpoints[atom].PBEC(4,index),gridpoints[atom].PBEC(5,index),gridpoints[atom].PBEC(6,index),gridpoints[atom].PBEC(7,index); //get beta density
+		}
+		return id;
+	}
+	//get density Hessian
+	//{element} = {0,1,2} <> {x,y,z}
+	//e.g. {element1 = 0, element2 = 1} <> {xy}
+	double get_hessian(int atom, int rpnt, int apnt, int element1, int element2){
+		static double index;
+		index = rpnt*angular_points + apnt;
+		return gridpoints[atom].rho_Hess[index].get_Hess(element1, element2);
+	}
+	//get alpha or beta density Hessian
+	//{element} = {0,1,2,3} <> {x,y,z,norm}
+	double get_hessian(int atom, int rpnt, int apnt, int element1, int element2, bool ab){ //function overload
+		static double index;
+		index = rpnt*angular_points + apnt;
+		if(ab){
+			return gridpoints[atom].alpha_Hess[index].get_Hess(element1, element2); //get alpha density
+		}
+		if(!ab){
+			return gridpoints[atom].beta_Hess[index].get_Hess(element1, element2); //get beta density
+		}
+	}
+	Eigen::MatrixXd get_hessian(int atom, int rpnt, int apnt){ //function overload
+		static double index;
+		index = rpnt*angular_points + apnt;
+		return gridpoints[atom].rho_Hess[index].get_Hess();
+	}
+	Eigen::MatrixXd get_hessian(int atom, int rpnt, int apnt, bool ab){ //function overload
+		static double index;
+		index = rpnt*angular_points + apnt;
+		if(ab){
+			return gridpoints[atom].alpha_Hess[index].get_Hess(); //get alpha density
+		}
+		if(!ab){
+			return gridpoints[atom].beta_Hess[index].get_Hess(); //get beta density
+		}
 	}
 
 	//*******************************************

@@ -49,6 +49,171 @@ public:
         //get amplitude of GTO-wavefunction at r = pos
         return getnorm()*pow(pos[0] - atompos[0], a)*pow(pos[1] - atompos[1], b)*pow(pos[2]-atompos[2], c)*exp(-alpha*(pos-atompos).squaredNorm());
     }
+    //get value of the derivative of the wavefunction w.r.t. x, y and z
+    vec3 getderiv(const vec3& pos){
+        static vec3 out;
+        if(a == 0){
+            out[0] = -2.0*alpha*getnorm()*pow(pos[1] - atompos[1], b)*pow(pos[2]-atompos[2], c)*exp(-alpha*(pos-atompos).squaredNorm()); //deriv to x
+        }
+        else{
+            out[0] = getnorm()*(-2.0*alpha * pow(pos[0] - atompos[0], a+1) + a*pow(pos[0] - atompos[0], a-1)) *pow(pos[1] - atompos[1], b)*pow(pos[2]-atompos[2], c)*exp(-alpha*(pos-atompos).squaredNorm());
+        }
+        if(b == 0){
+            out[1] = -2.0*alpha*getnorm()*pow(pos[0] - atompos[0], a)*pow(pos[2]-atompos[2], c)*exp(-alpha*(pos-atompos).squaredNorm()); //deriv to y
+        }
+        else{
+            out[1] = getnorm()*(-2.0*alpha * pow(pos[1] - atompos[1], b+1) + b*pow(pos[1] - atompos[1], b-1)) *pow(pos[0] - atompos[0], a)*pow(pos[2]-atompos[2], c)*exp(-alpha*(pos-atompos).squaredNorm());
+        }
+        if(c == 0){
+            out[2] = -2.0*alpha*getnorm()*pow(pos[1] - atompos[1], b)*pow(pos[0]-atompos[0], a)*exp(-alpha*(pos-atompos).squaredNorm()); //deriv to z
+        }
+        else{
+            out[2] = getnorm()*(-2.0*alpha * pow(pos[2] - atompos[2], c+1) + c*pow(pos[2] - atompos[2], c-1)) *pow(pos[1] - atompos[1], b)*pow(pos[0]-atompos[0], c)*exp(-alpha*(pos-atompos).squaredNorm());
+        }
+        return out;
+    }
+    //get Hessian of the wavefunction:
+    //
+    //  |  xx  |  yx  |  zx  |
+    //   ____________________
+    //  |  xy  |  yy  |  zy  |
+    //   ____________________
+    //  |  xz  |  yz  |  zz  |
+    //
+    Eigen::MatrixXd getHessian(const vec3& pos){
+        Eigen::MatrixXd out = Eigen::MatrixXd::Zero(3,3);
+        double expo = getnorm()*exp(-alpha*(pos-atompos).squaredNorm());
+
+        double factor = 4.0*alpha*alpha*pow(pos[0] - atompos[0], a+2) - 2*alpha*(2*a+1)*pow(pos[0] - atompos[0], a);
+        if(a > 1){
+            factor += a*(a+1)*pow(pos[0] - atompos[0], a-2);
+        }
+        out(0,0) = pow(pos[1] - atompos[1], b)*pow(pos[2]-atompos[2], c)*expo;
+        
+        factor = 4.0*alpha*alpha*pow(pos[1] - atompos[1], b+2) - 2*alpha*(2*b+1)*pow(pos[1] - atompos[1], b);
+        if(b > 1){
+            factor += b*(b+1)*pow(pos[1] - atompos[1], b-2);
+        }
+        out(1,1) = factor*pow(pos[0] - atompos[0], a)*pow(pos[2]-atompos[2], c)*expo;
+
+        factor = 4.0*alpha*alpha*pow(pos[2] - atompos[2], c+2) - 2*alpha*(2*c+1)*pow(pos[2] - atompos[2], c);
+        if(c > 1){
+            factor += c*(c+1)*pow(pos[2] - atompos[2], c-2);
+        }
+        out(2,2) = factor*pow(pos[0] - atompos[0], a)*pow(pos[1]-atompos[1], b)*expo;
+        
+        factor = 4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[1] - atompos[1], b+1);
+        if(b > 0){
+            factor -= 2*alpha*b*pow(pos[0] - atompos[0], a+1)*pow(pos[1] - atompos[1], b-1);
+        }
+        if(a > 0){
+            factor -= 2*alpha*a*pow(pos[0] - atompos[0], a-1)*pow(pos[1] - atompos[1], b+1);
+        }
+        if(a > 0 && b > 0){
+            factor += a*b*pow(pos[0] - atompos[0], a-1)*pow(pos[1] - atompos[1], b-1);
+        }
+        out(1,0) = out(0,1) = factor*pow(pos[2]-atompos[2], c)*expo;
+
+        factor = 4.0*alpha*alpha*pow(pos[2] - atompos[2], c+1)*pow(pos[1] - atompos[1], b+1);
+        if(b > 0){
+            factor -= 2*alpha*b*pow(pos[2] - atompos[2], c+1)*pow(pos[1] - atompos[1], b-1);
+        }
+        if(c > 0){
+            factor -= 2*alpha*c*pow(pos[2] - atompos[2], c-1)*pow(pos[1] - atompos[1], b+1);
+        }
+        if(c > 0 && b > 0){
+            factor += c*b*pow(pos[2] - atompos[2], c-1)*pow(pos[1] - atompos[1], b-1);
+        }
+        out(2,1) = out(1,2) = factor*pow(pos[0]-atompos[0], a)*expo;
+
+        factor = 4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c+1);
+        if(c > 0){
+            factor -= 2*alpha*c*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c-1);
+        }
+        if(a > 0){
+            factor -= 2*alpha*a*pow(pos[0] - atompos[0], a-1)*pow(pos[2] - atompos[2], c+1);
+        }
+        if(a > 0 && c > 0){
+            factor += a*c*pow(pos[0] - atompos[0], a-1)*pow(pos[2] - atompos[2], c-1);
+        }
+        out(2,0) = out(0,2) = factor*pow(pos[1]-atompos[1], b)*expo;
+
+        return out;
+
+        // if(a == 0){
+        //     out(0,0) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+2) - 2*alpha*pow(pos[0] - atompos[0], a)  )*pow(pos[1] - atompos[1], b)*pow(pos[2]-atompos[2], c)*expo;
+                        
+        //     if(b == 0){
+        //         out(1,1) = getnorm()*(  4.0*alpha*alpha*pow(pos[1] - atompos[1], b+2) - 2*alpha*pow(pos[1] - atompos[1], b)  )*pow(pos[0] - atompos[0], a)*pow(pos[2]-atompos[2], c)*expo;
+        //         out(1,0) = out(0,1) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[1] - atompos[1], b+1) )*pow(pos[2]-atompos[2], c)*expo;
+        //         if(c == 0){
+        //             out(2,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[2] - atompos[2], c+2) - 2*alpha*pow(pos[2] - atompos[2], c)  )*pow(pos[1] - atompos[1], b)*pow(pos[0]-atompos[0], a)*expo;
+        //             out(2,0) = out(0,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c+1) )*pow(pos[1]-atompos[1], b)*expo;
+        //             out(2,1) = out(1,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[1] - atompos[1], b+1)*pow(pos[2] - atompos[2], c+1) )*pow(pos[0]-atompos[0], a)*expo;
+        //         }
+        //         else if(c == 1){
+        //             out(2,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[2] - atompos[2], c+2) - 2*alpha*(2*c+1)*pow(pos[2] - atompos[2], c)  )*pow(pos[1] - atompos[1], b)*pow(pos[0]-atompos[0], a)*expo;
+        //             out(2,0) = out(0,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c+1) - 2*alpha*c*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c-1) )*pow(pos[1]-atompos[1], b)*expo;
+        //             out(2,1) = out(1,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[1] - atompos[1], b+1)*pow(pos[2] - atompos[2], c+1) - 2*alpha*c*pow(pos[1] - atompos[1], b+1)*pow(pos[2] - atompos[2], c-1) )*pow(pos[0]-atompos[0], a)*expo;
+        //         }
+        //         else{
+        //             out(2,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[2] - atompos[2], c+2) - 2*alpha*(2*c+1)*pow(pos[2] - atompos[2], c) + c*(c+1)*pow(pos[2] - atompos[2], c-2)  )*pow(pos[1] - atompos[1], b)*pow(pos[0]-atompos[0], a)*expo;
+        //             out(2,0) = out(0,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c+1) - 2*alpha*c*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c-1) )*pow(pos[1]-atompos[1], b)*expo;
+        //             out(2,1) = out(1,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[1] - atompos[1], b+1)*pow(pos[2] - atompos[2], c+1) - 2*alpha*c*pow(pos[1] - atompos[1], b+1)*pow(pos[2] - atompos[2], c-1) )*pow(pos[0]-atompos[0], a)*expo;
+        //         }
+        //     }
+        //     else if(b == 1){
+        //         out(1,1) = getnorm()*(  4.0*alpha*alpha*pow(pos[1] - atompos[1], b+2) - 2*alpha*(2*b+1)*pow(pos[1] - atompos[1], b)  )*pow(pos[0] - atompos[0], a)*pow(pos[2]-atompos[2], c)*expo;
+        //         out(1,0) = out(0,1) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[1] - atompos[1], b+1) - 2*alpha*b*pow(pos[0] - atompos[0], a+1)*pow(pos[1] - atompos[1], b-1) )*pow(pos[2]-atompos[2], c)*expo;
+        //         if(c == 0){
+        //             out(2,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[2] - atompos[2], c+2) - 2*alpha*pow(pos[2] - atompos[2], c)  )*pow(pos[1] - atompos[1], b)*pow(pos[0]-atompos[0], a)*expo;
+        //             out(2,0) = out(0,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c+1) )*pow(pos[1]-atompos[1], b)*expo;
+        //             out(2,1) = out(1,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[1] - atompos[1], b+1)*pow(pos[2] - atompos[2], c+1) )*pow(pos[0]-atompos[0], a)*expo;
+        //         }
+        //         else if(c == 1){
+        //             out(2,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[2] - atompos[2], c+2) - 2*alpha*(2*c+1)*pow(pos[2] - atompos[2], c)  )*pow(pos[1] - atompos[1], b)*pow(pos[0]-atompos[0], a)*expo;
+        //             out(2,0) = out(0,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c+1) - 2*alpha*c*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c-1) )*pow(pos[1]-atompos[1], b)*expo;
+        //             out(2,1) = out(1,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[1] - atompos[1], b+1)*pow(pos[2] - atompos[2], c+1) - 2*alpha*c*pow(pos[1] - atompos[1], b+1)*pow(pos[2] - atompos[2], c-1) )*pow(pos[0]-atompos[0], a)*expo;
+        //         }
+        //         else{
+        //             out(2,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[2] - atompos[2], c+2) - 2*alpha*(2*c+1)*pow(pos[2] - atompos[2], c) + c*(c+1)*pow(pos[2] - atompos[2], c-2)  )*pow(pos[1] - atompos[1], b)*pow(pos[0]-atompos[0], a)*expo;
+        //             out(2,0) = out(0,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c+1) - 2*alpha*c*pow(pos[0] - atompos[0], a+1)*pow(pos[2] - atompos[2], c-1) )*pow(pos[1]-atompos[1], b)*expo;
+        //             out(2,1) = out(1,2) = getnorm()*(  4.0*alpha*alpha*pow(pos[1] - atompos[1], b+1)*pow(pos[2] - atompos[2], c+1) - 2*alpha*c*pow(pos[1] - atompos[1], b+1)*pow(pos[2] - atompos[2], c-1) )*pow(pos[0]-atompos[0], a)*expo;
+        //         }
+        //     }
+        //     else{
+        //         out(1,1) = getnorm()*(  4.0*alpha*alpha*pow(pos[1] - atompos[1], b+2) - 2*alpha*(2*b+1)*pow(pos[1] - atompos[1], b) + b*(b+1)*pow(pos[1] - atompos[1], b-2)  )*pow(pos[0] - atompos[0], a)*pow(pos[2]-atompos[2], c)*expo;
+        //         out(1,0) = out(0,1) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[1] - atompos[1], b+1) - 2*alpha*b*pow(pos[0] - atompos[0], a+1)*pow(pos[1] - atompos[1], b-1) )*pow(pos[2]-atompos[2], c)*expo;
+        //     }
+        // }
+        // else if(a == 1){
+        //     out(0,0) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+2) - 2*alpha*(2*a+1)*pow(pos[0] - atompos[0], a)  )*pow(pos[1] - atompos[1], b)*pow(pos[2]-atompos[2], c)*expo;
+            
+        //     if(b == 0){
+        //         out(1,1) = getnorm()*(  4.0*alpha*alpha*pow(pos[1] - atompos[1], b+2) - 2*alpha*pow(pos[1] - atompos[1], b)  )*pow(pos[0] - atompos[0], a)*pow(pos[2]-atompos[2], c)*expo;
+        //         out(1,0) = out(0,1) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[1] - atompos[1], b+1) - 2*alpha*a*pow(pos[0] - atompos[0], a-1)*pow(pos[1] - atompos[1], b+1) )*pow(pos[2]-atompos[2], c)*expo;
+        //         if(c == 0){
+        //             out(2,2) = 0.0;
+        //         }
+        //         else if(c == 1){
+        //             out(2,2) = 0.0;
+        //         }
+        //         else{
+        //             out(2,2) = 0.0;
+        //         }
+        //     }
+        //     else if(b == 1){
+        //         out(1,1) = getnorm()*(  4.0*alpha*alpha*pow(pos[1] - atompos[1], b+2) - 2*alpha*(2*b+1)*pow(pos[1] - atompos[1], b)  )*pow(pos[0] - atompos[0], a)*pow(pos[2]-atompos[2], c)*expo;
+        //         out(1,0) = out(0,1) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+1)*pow(pos[1] - atompos[1], b+1) - 2*alpha*b*pow(pos[0] - atompos[0], a+1)*pow(pos[1] - atompos[1], b-1) )*pow(pos[2]-atompos[2], c)*expo;
+        //     }
+        //     else{
+        //         //
+        //     }
+        // }
+        // else{
+        //     out(0,0) = getnorm()*(  4.0*alpha*alpha*pow(pos[0] - atompos[0], a+2) - 2*alpha*(2*a+1)*pow(pos[0] - atompos[0], a) + a*(a+1)*pow(pos[0] - atompos[0], a-2)  )*pow(pos[1] - atompos[1], b)*pow(pos[2]-atompos[2], c)*expo;
+        // }
+    }
 };
 
 //Contracted Gaussian orbital
@@ -78,6 +243,23 @@ public:
         for(int i=0; i<get_size(); i++)
         {
             out = out + coeff[i]*GTOlist[i].getvalue(pos);
+        }
+        return out;
+    }
+    //get value of the derivative of the wavefunction w.r.t. x, y and z
+    vec3 getderiv(const vec3& point){
+        vec3 out;
+        out << 0.0,0.0,0.0;
+        for(int i=0; i<get_size(); i++){
+            out += coeff[i]*GTOlist[i].getderiv(point);
+        }
+        return out;
+    }
+    //get Hessian of the wavefunction:
+    Eigen::MatrixXd getHessian(const vec3& point){
+        Eigen::MatrixXd out = Eigen::MatrixXd::Zero(3,3);
+        for(int i=0; i<get_size(); i++){
+            out += coeff[i]*GTOlist[i].getHessian(point);
         }
         return out;
     }

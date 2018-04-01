@@ -29,6 +29,7 @@ Please look through the cases already present for the correct syntax
 #include "orbitals.h"
 #include "hf.h"
 #include "dft.h"
+#include "geo.h"
 
 typedef Eigen::Vector3d vec3; //define vec3 as the Eigen::Vector3d-object
 
@@ -43,8 +44,8 @@ const bool mono = false;
 const bool H2_switch = true;
 const bool HeHp_switch = false;
 const bool HeH_switch = true;
-const bool He2_switch = false;
-const bool CO_switch = true;
+const bool He2_switch = true;
+const bool CO_switch = false;
 const bool H2O_switch = false;
 
 //define functional call for visualisation procedure
@@ -233,11 +234,23 @@ int main() {
         SCF_E H2_DFT; //create output struct for H2 DFT energy minimisation
         H2_DFT = SCF_DFT_energy(AO_list,pos_list,charge_list,nelec_list,atnum_list); //run SCF energy minimisation and get results
 
-        SCF_E H2_UHF;
-        H2_UHF = SCF_UHF_energy(AO_list,pos_list,charge_list, nelec_list);
+        //SCF_E H2_UHF;
+        //H2_UHF = SCF_UHF_energy(AO_list,pos_list,charge_list, nelec_list);
 
-        SCF_E H2_UDFT; //create output struct for H2 DFT energy minimisation
-        H2_UDFT = SCF_UDFT_energy(AO_list,pos_list,charge_list,nelec_list,atnum_list); //run SCF energy minimisation and get results
+        //SCF_E H2_UDFT; //create output struct for H2 DFT energy minimisation
+        //H2_UDFT = SCF_UDFT_energy(AO_list,pos_list,charge_list,nelec_list,atnum_list); //run SCF energy minimisation and get results
+
+        //geometry optimisation test:
+        vec3 pos_test;
+        pos_test << 0.0,0.0,1.1;
+        vector<vec3> pos_list_new; //create list of nucleic positions
+        pos_list_new.push_back(pos);
+        pos_list_new.push_back(pos_test);
+
+        // GEO H2_GEO;
+        // H2_GEO = GEO_HF_nograd(AO_list,pos_list_new,charge_list,nelec_list);
+        // cout << endl << "Hessian: " << endl << endl;
+        // H2_GEO = GEO_HF_numerical(AO_list,pos_list_new,charge_list,nelec_list);
 
         //visualisation of H2 ground-state orbital
         if(visual){
@@ -359,7 +372,7 @@ int main() {
         cgfHe_1.add_gto(0.44463454000000002,0.31364978999999998,0.0,0.0,0.0,pos);
         //position second helium appropriate distance from first helium:
         vec3 pos_He2;
-        pos_He2 << 0.0,0.0,5.2;
+        pos_He2 << 0.0,0.0,6.238231603;//5.2;
         CGF cgfHe2; //create orbitals for second helium atom at pos2
         cgfHe2.add_gto(0.15432897000000001,6.3624213899999997,0.0,0.0,0.0,pos_He2);
         cgfHe2.add_gto(0.53532813999999995,1.1589229999999999,0.0,0.0,0.0,pos_He2);

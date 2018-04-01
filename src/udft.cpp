@@ -186,6 +186,9 @@ SCF_E SCF_UDFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const v
     cout << "Writing wavefunctions: " << AO_list.size() << endl;
     //add line for setting wavefunction amplitudes
     GCL_grid.write_amps(AO_list);
+    if(GGA){
+        GCL_grid.write_gradient(AO_list); //write wavefunction derivatives for GGA
+    }
     cout << "Finished generating grid;" << endl;
     
     if(Poisson && Quadrature){
@@ -195,7 +198,8 @@ SCF_E SCF_UDFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const v
     cout << "Beginning electronic optimisation: (UDFT) " << endl;
     cout << "Iter./Energy;" << endl;
 
-    double tempos1, tempos2;
+    double tempos1, tempos2, tempos3, tempos4;
+    Eigen::VectorXd tempos = Eigen::VectorXd::Zero(6);
 
     //SCF-loop for energy optimisation:
     while(energy_difference > TolEnergy && loop_counter < loop_max) {
@@ -274,6 +278,9 @@ SCF_E SCF_UDFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const v
             Exchange_beta = Exchange_alpha;
             Correlation_beta = Correlation_alpha;
             GCL_grid.set_density(P_density_alpha, P_density_beta); //update electron density map
+            if(GGA){
+                GCL_grid.set_gradient(P_density_alpha, P_density_beta); //only write gradients for GGA
+            }
             if(Poisson){
                 G_two_electron = Exchange_alpha; //reset matrix
                 GCL_grid.set_Poisson(); //update the Poisson potential
@@ -287,16 +294,29 @@ SCF_E SCF_UDFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const v
                         Density_beta = GCL_grid.get_density(atom, rpnt, apnt, false);
                         if(Density > DenTol){
                             weight = GCL_grid.get_weight(atom,rpnt,apnt);
-                            Ex += weight*exchange_Dirac(Density_alpha, Density_beta)*Density; //add factor 3/4 to convert potential to energy
-                            Ec += weight*correlation_VWN(Density_alpha, Density_beta)*Density;
-                            NELEC += weight*Density;
+                            if(GGA && loop_counter > 1){
+                                tempos = PBE(Density_alpha, Density_beta, GCL_grid.get_gradient(atom, rpnt, apnt, true), GCL_grid.get_gradient(atom, rpnt, apnt, false), GCL_grid.get_hessian(atom, rpnt, apnt, true), GCL_grid.get_hessian(atom, rpnt, apnt, false));
+                            }
+                            else{
+                                tempos = exchange_correlation(Density_alpha,Density_beta);
+                            }
+                            Ex += weight*tempos[0]*Density;
+                            Ec += weight*tempos[1]*Density;
+                            
+                            NELEC += weight*Density; //integrate total density
+
+                            tempos1 = weight*tempos[2]; //nu_x_alpha
+                            tempos2 = weight*tempos[4]; //nu_x_beta
+                            tempos3 = weight*tempos[3]; //nu_c_alpha
+                            tempos4 = weight*tempos[5]; //nu_c_beta
+                            
                             for(int i=0; i<AO_list.size(); i++){ //change nesting order, which limits the number of times the density must be computed
                                 for(int j=0; j<AO_list.size(); j++){
                                     Local = GCL_grid.get_amps(atom,rpnt,apnt,i)*GCL_grid.get_amps(atom,rpnt,apnt,j);
-                                    Exchange_alpha(i,j) += weight*exchange_potential(Density_alpha,Density_beta,true)*Local; //Dirac exchange functional
-                                    Correlation_alpha(i,j) += weight*VWN_potential(Density_alpha,Density_beta,true)*Local; //Vosko-Wilk-Nusair correlation functional
-                                    Exchange_beta(i,j) += weight*exchange_potential(Density_alpha,Density_beta,false)*Local; //Dirac exchange functional
-                                    Correlation_beta(i,j) += weight*VWN_potential(Density_alpha,Density_beta,false)*Local; //Vosko-Wilk-Nusair correlation functional
+                                    Exchange_alpha(i,j) += tempos1*Local; //Dirac exchange functional
+                                    Correlation_alpha(i,j) += tempos2*Local; //Vosko-Wilk-Nusair correlation functional
+                                    Exchange_beta(i,j) += tempos3*Local; //Dirac exchange functional
+                                    Correlation_beta(i,j) += tempos4*Local; //Vosko-Wilk-Nusair correlation functional
                                     if(Poisson){
                                         G_two_electron(i,j) += weight*Local*GCL_grid.get_Poisson(atom,rpnt,apnt);
                                     }
@@ -341,7 +361,7 @@ SCF_E SCF_UDFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const v
             }
         }
         energy += (Ex + Ec); //include XC-energies
-
+        
         //Add nuclear repulsion to the orbital energies
         for(int i=0; i<charge_list.size(); i++){
             for(int j=0; j<charge_list.size(); j++){
@@ -398,7 +418,7 @@ SCF_E SCF_UDFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const v
             GCL_grid.PC_check(i);
         }
     }
-
+    
     //sort molecular orbitals:
     Eigen::VectorXd e_joined = Eigen::VectorXd::Zero(orbital_energies_alpha.size()+orbital_energies_beta.size());
     e_joined << orbital_energies_alpha, orbital_energies_beta;
@@ -476,16 +496,12 @@ SCF_E SCF_UDFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const v
 //Density Functional Theory:
 
 
-//------------------>//merge below functions:
-
-
 //calculate localised exchange-part of the DFT exchange-correlation potential
 //according to the Dirac expression for a Homogeneous Electron Gas (LDA)
 double exchange_Dirac(double Density_alpha, double Density_beta)
 {
     static const double pi = 3.14159265359;
     static const double prefactor = -0.75*pow(3.0/pi,1.0/3.0);
-    static const double root = sqrt(2.0);
     static const double form = pow(2.0,1.0/3.0) - 1.0;
     static double Density_ttl;
     Density_ttl = Density_alpha + Density_beta;
@@ -503,7 +519,6 @@ double exchange_potential(double Density_alpha, double Density_beta, bool ab)
     static const double pi = 3.14159265359;
     static const double powr = 1.0/3.0;
     static const double prefactor = -0.75*pow(3.0/pi,powr);
-    static const double root = sqrt(2.0);
     static const double form = pow(2.0,powr) - 1.0;
     static double Density_ttl;
     Density_ttl = Density_alpha + Density_beta;
@@ -637,6 +652,254 @@ double VWN_potential(double Density_alpha, double Density_beta, bool ab)
     }
 
     return ec_p + f * (   ec_a * fpp0 * (1.0 - pow(chi,4.0)) + pow(chi,4.0) * (ec_f - ec_p)   ) - (x_small*x_small/3.0) * deriv + term3 * mix;
+}
+
+Eigen::VectorXd exchange_correlation(double Density_alpha, double Density_beta){
+
+    static Eigen::VectorXd store = Eigen::VectorXd::Zero(6); //1:Ex, 2:Ec, 3: Vx_a, 4: Vx_b, 5: Vc_a, 6: Vc_b
+
+    static const double pi = 3.14159265359;
+    static const double powr = 1.0/3.0;
+    static const double prefactor = -0.75*pow(3.0/pi,powr);
+    //Vosko-Wilk-Nusair V parameters
+    static const double A_p = 0.0621814;
+    static const double x0_p = -0.10498;
+    static const double b_p = 3.72744;
+    static const double c_p = 12.9352;
+    //ferromagnetic:
+    static const double A_f = A_p/2.0;
+    static const double x0_f = -0.32500;
+    static const double b_f = 7.06042;
+    static const double c_f = 18.0578;   
+    //spin-stiffness:
+    static const double A_a = -1.0/(3.0*pi*pi);
+    static const double x0_a = -0.0047584;
+    static const double b_a = 1.13107;
+    static const double c_a = 13.0045;
+    //end
+    static const double form = pow(2.0,powr) - 1.0;
+    static const double fpp0 = 2.25 * form; // this is 1.0 / fpp(0) | fpp(0) = 4.0/(9.0*form)
+
+    double Density_ttl = Density_alpha + Density_beta;
+    double chi = (Density_alpha - Density_beta) / Density_ttl;
+    double f = (pow(1.0+chi,4.0*powr) + pow(1.0-chi,4.0*powr) - 2.0) / (2.0*form);
+    double formderiv = ( pow(1.0+chi,powr) - pow(1.0-chi,powr) ) * 2.0 * powr / form;
+
+    double pre = 3.0/(4.0*pi*Density_ttl);
+    double x_small = pow(pre,1.0/6.0); //x = sqrt(r0); r0 = (3/(4*pi*Density))^1/3
+    double X_large_p = x_small*x_small + x_small*b_p + c_p;
+    double X_large_f = x_small*x_small + x_small*b_f + c_f;
+    double X_large_a = x_small*x_small + x_small*b_a + c_a;
+    double Q_p = sqrt(4.0*c_p - b_p*b_p);
+    double Q_f = sqrt(4.0*c_f - b_f*b_f);
+    double Q_a = sqrt(4.0*c_a - b_a*b_a);
+    double Fx_p = log(pow(x_small-x0_p,2.0)/X_large_p) + 2.0*(b_p+2.0*x0_p)*atan(Q_p/(b_p+2.0*x_small))/Q_p;
+    double Fx_f = log(pow(x_small-x0_f,2.0)/X_large_f) + 2.0*(b_f+2.0*x0_f)*atan(Q_f/(b_f+2.0*x_small))/Q_f;
+    double Fx_a = log(pow(x_small-x0_a,2.0)/X_large_a) + 2.0*(b_a+2.0*x0_a)*atan(Q_a/(b_a+2.0*x_small))/Q_a;
+    double ec_p = 0.5*A_p*(    log(x_small*x_small/X_large_p) + 2.0*b_p*atan(Q_p/(2.0*x_small+b_p))/Q_p - b_p*x0_p*Fx_p/(x0_p*x0_p + x0_p*b_p + c_p)    );
+    double ec_f = 0.5*A_f*(    log(x_small*x_small/X_large_f) + 2.0*b_f*atan(Q_f/(2.0*x_small+b_f))/Q_f - b_f*x0_f*Fx_f/(x0_f*x0_f + x0_f*b_f + c_f)    );
+    double ec_a = 0.5*A_a*(    log(x_small*x_small/X_large_a) + 2.0*b_a*atan(Q_a/(2.0*x_small+b_a))/Q_a - b_a*x0_a*Fx_a/(x0_a*x0_a + x0_a*b_a + c_a)    );
+    double dF_p = 2.0/(x_small-x0_p)-(2.0*x_small+b_p)/X_large_p-4.0*(2.0*x0_p+b_p)/(pow(2.0*x_small+b_p,2.0)+Q_p*Q_p);
+    double dF_f = 2.0/(x_small-x0_f)-(2.0*x_small+b_f)/X_large_f-4.0*(2.0*x0_f+b_f)/(pow(2.0*x_small+b_f,2.0)+Q_f*Q_f);
+    double dF_a = 2.0/(x_small-x0_a)-(2.0*x_small+b_a)/X_large_a-4.0*(2.0*x0_a+b_a)/(pow(2.0*x_small+b_a,2.0)+Q_a*Q_a);
+    double deriv_p = 0.25*A_p*(2.0/x_small - (2.0*x_small+b_p)/X_large_p - 4.0*b_p/(pow(2.0*x_small+b_p,2.0)+Q_p*Q_p) - (b_p*x0_p/(x0_p*x0_p + x0_p*b_p + c_p)) * dF_p)/x_small;
+    double deriv_f = 0.25*A_f*(2.0/x_small - (2.0*x_small+b_f)/X_large_f - 4.0*b_f/(pow(2.0*x_small+b_f,2.0)+Q_f*Q_f) - (b_f*x0_f/(x0_f*x0_f + x0_f*b_f + c_f)) * dF_f)/x_small;
+    double deriv_a = 0.25*A_a*(2.0/x_small - (2.0*x_small+b_a)/X_large_a - 4.0*b_a/(pow(2.0*x_small+b_a,2.0)+Q_a*Q_a) - (b_a*x0_a/(x0_a*x0_a + x0_a*b_a + c_a)) * dF_a)/x_small;
+
+    double deriv = deriv_p + f * (   deriv_a * fpp0 * (1.0 - pow(chi,4.0)) + pow(chi,4.0) * (deriv_f - deriv_p)   ); // d/dr_s of e_c
+    double mix = 4.0 * chi * chi * chi * f * (ec_f - ec_p - fpp0 * ec_a) + formderiv * (ec_a * fpp0 * (1.0 - pow(chi,4.0)) + pow(chi,4.0) * (ec_f - ec_p)); // d/d chi of e_c
+
+    static double term3a;
+    static double term3b;
+    term3a = 2.0 * Density_beta / Density_ttl;
+    term3b = -2.0 * Density_alpha / Density_ttl;
+    
+    static double nonspin;
+    nonspin = prefactor * pow(Density_ttl,powr); // e_x^0
+
+    store[0] = (f*form + 1.0) * nonspin; //e_x
+    store[1] = ec_p + f * (   ec_a * fpp0 * (1.0 - pow(chi,4.0)) + pow(chi,4.0) * (ec_f - ec_p)   ); //V_c
+    store[2] = 4.0*powr*store[0] + form * nonspin * term3a; //Vx_a
+    store[3] = 4.0*powr*store[0] + form * nonspin * term3b; //Vx_b
+    store[4] = store[1] - (x_small*x_small/3.0) * deriv + term3a * mix; //Vc_a
+    store[5] = store[4] + (term3b-term3a) * mix; //Vc_b
+
+    return store;
+}
+
+Eigen::VectorXd PBE(double Density, double gradient){
+    //Perdew-Burke-Ernzerhoff Exchange & Correlation functionals
+    Eigen::VectorXd out = Eigen::VectorXd::Zero(6);
+    //Exchange part
+    static const double pi = 3.14159265359;
+    static const double mu = 0.21951;
+    static const double kappa = 0.804;
+    static const double s_pre = 0.5/pow(3.0*pi*pi,1.0/3.0);
+    double s = s_pre * gradient * pow(Density,-4.0/3.0);
+    //for Dirac: Fxs = 1;
+    double Fxs = 1.0 + kappa - kappa/(1.0 + mu * s * s / kappa);
+    //epsilon = epsilon_Dirac * Fxs
+    out[0] = exchange_Dirac(0.5*Density,0.5*Density)*Fxs;
+    //potential nu_x:
+
+
+    //Correlation part
+
+    // double chi = (Density_alpha - Density_beta) / Density_ttl;
+    // double phi = 0.5*(pow(1+chi,2.0*powr)+pow(1-chi,2.0*powr));
+    // double phi3 = phi*phi*phi;
+    // vec3 gradelement3ttl;
+    // gradelement3ttl << gradienta[0]+gradientb[0],gradienta[1]+gradientb[1],gradienta[2]+gradientb[2];
+    // double gradttl = (gradelement3ttl).norm();
+    // double t = AlphaC * gradttl / (pow(Density_ttl,3.5*powr)*phi);
+    // double t2 = t*t;
+    // double t4 = t2*t2;
+    // double expo = exp(  -ec[1] / (GammaC * phi*phi*phi)  );
+    // double A = (BetaC/GammaC) / (  expo - 1.0  );
+    // double oneAt2 = 1.0 + A*t2;
+    // double twoAt2 = 1.0 + 2.0*A*t2;
+    // double H = GammaC*phi3*log( 1.0 + (BetaC/GammaC)*t2 * oneAt2 / (1.0 + A*t2 + A*A*t4) );
+
+    //potential:
+
+    return out;
+}
+
+//add switch in exchange_correlation() to use PBE for GGA == true
+//epsilon * F
+//
+//input needs: gradient x,y,z,norm for both a and b, Density of both a and b, Hessian of both a and b
+//
+Eigen::VectorXd PBE(double Density_alpha, double Density_beta, Eigen::VectorXd gradienta, Eigen::VectorXd gradientb, Eigen::MatrixXd Hessiana, Eigen::MatrixXd Hessianb){
+    //Perdew-Burke-Ernzerhoff Exchange & Correlation functionals
+    Eigen::VectorXd store = Eigen::VectorXd::Zero(6);
+    //Exchange part
+    static const double pi = 3.14159265359;
+    static const double powr = 1.0/3.0;
+    static const double mu = 0.21951;
+    static const double kappa = 0.804;
+    static const double alpha = 0.75*pow(6.0/pi,powr);
+    static const double beta = 4.0*pow(6.0,2.0*powr)*pow(pi,4.0*powr)*kappa;
+    static const double gamma = 2.0*alpha*beta*kappa*mu;
+    static const double AlphaC = 0.25*pow(pi*powr,1.0/6.0);
+    static const double BetaC = 0.066725;
+    static const double GammaC = 0.031091;
+
+    double Density_ttl = Density_alpha + Density_beta;
+    double bracketsa = mu*gradienta[3]*gradienta[3] + beta*pow(Density_alpha,8.0*powr);
+    double bracketsb = mu*gradientb[3]*gradientb[3] + beta*pow(Density_beta,8.0*powr);
+    double epsilon_alpha = -alpha*pow(Density_alpha,4.0*powr)*( 1.0 + kappa*mu*gradienta[3]*gradienta[3] / bracketsa ) / Density_ttl;
+    double epsilon_beta = -alpha*pow(Density_beta,4.0*powr)*( 1.0 + kappa*mu*gradientb[3]*gradientb[3] / bracketsb ) / Density_ttl;
+
+    store[0] = epsilon_alpha + epsilon_beta;
+
+    //potential nu_x:
+    double term1a = -4.0*powr*alpha*pow(Density_alpha,powr) * (1.0 + kappa*mu*gradienta[3]*gradienta[3]/bracketsa) + 4.0*powr*gamma*( gradienta[3]*gradienta[3]*Density_alpha*Density_alpha*Density_alpha/(bracketsa*bracketsa) );
+    double Oa = -gamma*Density_alpha*Density_alpha*Density_alpha*Density_alpha / (bracketsa*bracketsa);
+    double term2a = Oa * (  Hessiana(0,0) + Hessiana(1,1) + Hessiana(2,2)  ); //2nd part is the divergence of the gradient
+    double gradOa = ( 16.0*beta*gamma*pow(Density_alpha,17.0*powr) / (3*bracketsa*bracketsa*bracketsa) ) - ( 4.0*gamma*Density_alpha*Density_alpha*Density_alpha/(bracketsa*bracketsa) );
+    double term3a = gradOa * gradienta[3]*gradienta[3];
+    double gradOa2 = 4.0*gamma*mu*Density_alpha*Density_alpha*Density_alpha*Density_alpha / (bracketsa*bracketsa); //*gradienta[3] removed, since this term drops in term4
+    double term4a = 0.0;
+    for(int i=0; i<3; i++){
+        term4a += gradienta[i] * ( gradienta[0]*Hessiana(i,0) + gradienta[1]*Hessiana(i,1) + gradienta[2]*Hessiana(i,2) );
+    }
+    term4a *= gradOa2;
+    double term1b = -4.0*powr*alpha*pow(Density_beta,powr) * (1.0 + kappa*mu*gradientb[3]*gradientb[3]/bracketsb) + 4.0*powr*gamma*( gradientb[3]*gradientb[3]*Density_beta*Density_beta*Density_beta/(bracketsb*bracketsb) );
+    double Ob = -gamma*Density_beta*Density_beta*Density_beta*Density_beta / (bracketsb*bracketsb);
+    double term2b = Ob * (  Hessianb(0,0) + Hessianb(1,1) + Hessianb(2,2)  ); //2nd part is the divergence of the gradient
+    double gradOb = ( 16.0*beta*gamma*pow(Density_beta,17.0*powr) / (3*bracketsb*bracketsb*bracketsb) ) - ( 4.0*gamma*Density_beta*Density_beta*Density_beta/(bracketsb*bracketsb) );
+    double term3b = gradOb * gradientb[3]*gradientb[3];
+    double gradOb2 = 4.0*gamma*mu*Density_beta*Density_beta*Density_beta*Density_beta / (bracketsb*bracketsb); //*gradienta[3] removed, since this term drops in term4
+    double term4b = 0.0;
+    for(int i=0; i<3; i++){
+        term4b += gradientb[i] * ( gradientb[0]*Hessianb(i,0) + gradientb[1]*Hessianb(i,1) + gradientb[2]*Hessianb(i,2) );
+    }
+    term4b *= gradOb2;
+
+    store[2] = term1a - (term2a + term3a + term4a); //Vx_a
+    store[3] = term1b - (term2b + term3b + term4b); //Vx_b
+    //Correlation part
+
+    //
+    Eigen::VectorXd ec = exchange_correlation(Density_alpha, Density_beta); //to be merged
+    //
+    double chi = (Density_alpha - Density_beta) / Density_ttl;
+    double phi = 0.5*(pow(1+chi,2.0*powr)+pow(1-chi,2.0*powr));
+    double phi3 = phi*phi*phi;
+    vec3 gradelement3ttl;
+    gradelement3ttl << gradienta[0]+gradientb[0],gradienta[1]+gradientb[1],gradienta[2]+gradientb[2];
+    double gradttl = (gradelement3ttl).norm();
+    double t = AlphaC * gradttl / (pow(Density_ttl,3.5*powr)*phi);
+    double t2 = t*t;
+    double t4 = t2*t2;
+    double expo = exp(  -ec[1] / (GammaC * phi*phi*phi)  );
+    double A = (BetaC/GammaC) / (  expo - 1.0  );
+    double oneAt2 = 1.0 + A*t2;
+    double twoAt2 = 1.0 + 2.0*A*t2;
+    double H = GammaC*phi3*log( 1.0 + (BetaC/GammaC)*t2 * oneAt2 / (1.0 + A*t2 + A*A*t4) );
+
+    store[1] = ec[1] + H; //V_c
+
+    //v_h = H + dH1 - dH2
+    //dH1:
+    double H_phi = 3.0*H/phi;
+    double dH_denom = (oneAt2+A*t4)*(GammaC + t2*oneAt2*(BetaC+A*GammaC));
+    double H_A = -A*t2*t4*(2.0+A*t2)*BetaC*GammaC*phi3 / dH_denom;
+    double H_t = 2.0*t*twoAt2*BetaC*GammaC*phi3 / dH_denom;
+
+    static double oldtermA;
+    static double oldtermB;
+    oldtermA = 2.0 * Density_beta / Density_ttl;
+    oldtermB = -2.0 * Density_alpha / Density_ttl;
+
+    double phi_chi = powr*(pow(1.0+chi,-powr) + pow(1.0-chi,powr));
+    double fermi = expo / ((expo - 1.0)*(expo - 1.0));
+    double A_phi = -3.0*BetaC*ec[1]*fermi/(GammaC*GammaC*phi3);
+    double A_eclda = BetaC*fermi/(GammaC*GammaC*phi3);
+    double dt = -3.5*powr*t;
+    double t_phi = -t/phi;
+
+    double phi_a = phi_chi * oldtermA;
+    double phi_b = phi_chi * oldtermB;
+
+    double H1phi_a = H_phi * phi_a;
+    double H1A_a = H_A * (  A_phi * phi_a + A_eclda * (ec[4] - ec[1])  );
+    double H1t_a = H_t * (  dt + t_phi * phi_a  );
+    double H1a = H1phi_a + H1A_a + H1t_a;
+
+    double H1phi_b = H_phi * phi_b;
+    double H1A_b = H_A * (  A_phi * phi_b + A_eclda * (ec[5] - ec[1])  );
+    double H1t_b = H_t * (  dt + t_phi * phi_b  );
+    double H1b = H1phi_b + H1A_b + H1t_b;
+
+    //dH2:
+    double H_wiggle = t*t_phi/(gradttl*gradttl);
+
+    double H_wiggle_t = 4.0*t*BetaC*GammaC*phi3* ( twoAt2 + A*t2*(2.0 - twoAt2*twoAt2*twoAt2/(oneAt2+A*A*t4)) - (t2*(BetaC+A*GammaC)*twoAt2*twoAt2/(GammaC+t2*oneAt2*(BetaC+A*GammaC))) ) / (gradttl*gradttl*dH_denom);
+    double H_wiggle_nabla = (-2.0*H_wiggle*Density_ttl/gradttl) + (H_wiggle_t*Density_ttl*t/gradttl);//rho * dH_w /d|nabla(rho)|;
+    double term4 = 0.0;
+    for(int i=0; i<3; i++){
+        term4 += (gradienta[i] + gradientb[i]) * ( (gradienta[0]+gradientb[0])*(Hessiana(i,0)+Hessianb(i,0)) + (gradienta[1]+gradientb[1])*(Hessiana(i,1)+Hessianb(i,1)) + (gradienta[2]+gradientb[2])*(Hessiana(i,2)+Hessianb(i,2)) );
+    }
+    term4 *= H_wiggle_nabla/gradttl;
+
+    double H_wiggle_phi = 3.0*H_wiggle/phi;
+    double H_wiggle_A = 2*t2*BetaC*GammaC*phi3*( 2.0 - ( twoAt2*twoAt2*twoAt2/(oneAt2+A*A*t4) ) - twoAt2*(BetaC*t2+2.0*A*GammaC*t2+GammaC)/(GammaC+t2*oneAt2*(BetaC+4.0*GammaC)) )/(gradttl*gradttl*dH_denom);
+    double H_alpha = H_wiggle_phi*phi_a + H_wiggle_t*(  dt + t_phi * phi_a  ) + H_wiggle_A*(  A_phi * phi_a + A_eclda * (ec[4] - ec[1])  );
+    double H_beta = H_wiggle_phi*phi_b + H_wiggle_t*(  dt + t_phi * phi_b  ) + H_wiggle_A*(  A_phi * phi_b + A_eclda * (ec[5] - ec[1])  );
+    
+    double H2 = Density_ttl*H_wiggle*(  Hessiana(0,0) + Hessiana(1,1) + Hessiana(2,2) + Hessianb(0,0) + Hessianb(1,1) + Hessianb(2,2)  );
+    H2 += gradttl*gradttl*H_wiggle;
+    H2 += term4;
+    for(int i=0; i<3; i++){
+        H2 += Density_ttl*H_alpha*gradienta[i]*(gradienta[i]+gradientb[i]) + Density_ttl*H_beta*gradientb[i]*(gradienta[i]+gradientb[i]);
+    }
+
+    store[4] = ec[4] + H + H1a - H2; //Vc_a //this is only the H-part!!! also add the LDA part!!!
+    store[5] = ec[5] + H + H1b - H2; //Vc_b
+
+    return store;
 }
 
 //End of file

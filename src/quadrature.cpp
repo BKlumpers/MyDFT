@@ -63,7 +63,6 @@ void grid::set_density(const Eigen::MatrixXd& Pmatrix){
 //write values in spin-polarised systems
 void grid::set_density(const Eigen::MatrixXd& P_alpha, const Eigen::MatrixXd& P_beta){
 	//write total density
-	//set_density(P_alpha + P_beta); //write total density
 
 	//write alpha and beta densities by calling get_amps
 	static double density_value_beta;
@@ -90,6 +89,174 @@ void grid::set_density(const Eigen::MatrixXd& P_alpha, const Eigen::MatrixXd& P_
 		}
 	}
 }
+
+//compute the wavefunction gradients at each point
+void grid::write_gradient(vector<CGF> AO_list){
+	//get element ij for each point
+	//store in matrix with 1 column per point, one row per element of ij
+	vec3 point;
+	vec3 gradi;
+	vec3 gradj;
+	vec3 wave;
+	Eigen::MatrixXd Hessi;
+	Eigen::MatrixXd Hessj;
+	Eigen::MatrixXd H;
+	//assume object gradients, same size as amps
+	for(int atom=0; atom<gridpoints.size(); atom++){ //loop across all atomic grids
+		for(int rpnt=0; rpnt<radial_points; rpnt++){ //loop across all radial points
+			for(int apnt=0; apnt<angular_points; apnt++){ //loop across all angular points
+				static int index;
+				index = rpnt*angular_points + apnt;
+				int rowidx = 0; //allows indexing of each element ij
+				point = get_gridpoint(atom,rpnt,apnt);
+				for(int i=0; i<AO_list.size(); i++){
+					for(int j=0; j<AO_list.size(); j++){ //loop across all basis functions
+						//get grad of i
+						gradi = AO_list[i].getderiv(point);
+						//get grad of j
+						gradj = AO_list[j].getderiv(point);
+						//get these grads at each point -> store above values
+						//get total grad of element ij
+						//store each of these ij:
+						//gridpoints[atom].gradients[rowidx,index] = ( gridpoints[atom].amps(j,index) * gradi + gridpoints[atom].amps(i,index) * gradj ).norm;
+						wave = gridpoints[atom].amps(j,index) * gradi + gridpoints[atom].amps(i,index) * gradj;
+						gridpoints[atom].gradients_x(rowidx,index) = wave[0];
+						gridpoints[atom].gradients_y(rowidx,index) = wave[1];
+						gridpoints[atom].gradients_z(rowidx,index) = wave[2];
+						gridpoints[atom].gradients_norm(rowidx,index) = wave.norm();
+						//Hessian:
+						Hessi = AO_list[i].getHessian(point);
+						Hessj = AO_list[j].getHessian(point);
+
+						H = Eigen::MatrixXd::Zero(3,3);
+						H(0,0) = Hessi(0,0)*gridpoints[atom].amps(j,index) + 2.0*gradi[0]*gradj[0] + Hessj(0,0)*gridpoints[atom].amps(i,index);
+						H(1,0) = H(0,1) = Hessi(1,0)*gridpoints[atom].amps(j,index) + gradi[1]*gradj[0] + gradi[0]*gradj[1] + Hessj(1,0)*gridpoints[atom].amps(i,index);
+						H(2,0) = H(0,2) = Hessi(2,0)*gridpoints[atom].amps(j,index) + gradi[2]*gradj[0] + gradi[0]*gradj[2] + Hessj(2,0)*gridpoints[atom].amps(i,index);
+						H(1,1) = Hessi(1,1)*gridpoints[atom].amps(j,index) + 2.0*gradi[1]*gradj[1] + Hessj(1,1)*gridpoints[atom].amps(i,index);
+						H(1,2) = H(2,1) = Hessi(1,2)*gridpoints[atom].amps(j,index) + gradi[1]*gradj[2] + gradi[2]*gradj[1] + Hessj(1,2)*gridpoints[atom].amps(i,index);
+						H(2,2) = Hessi(2,2)*gridpoints[atom].amps(j,index) + 2.0*gradi[2]*gradj[2] + Hessj(2,2)*gridpoints[atom].amps(i,index);
+
+						gridpoints[atom].wave_Hess[rowidx].set_Hess(index,H);
+						rowidx++;
+					}
+				}
+			}
+		}
+	}
+}
+
+//compute the density gradient at each point
+void grid::set_gradient(const Eigen::MatrixXd& Pmatrix){
+	static double gradient;
+	static double x;
+	static double y;
+	static double z;
+	static Eigen::MatrixXd Hessian;
+	for(int atom=0; atom<gridpoints.size(); atom++){
+		for(int rpnt=0; rpnt<radial_points; rpnt++){
+			for(int apnt=0; apnt<angular_points; apnt++){
+				gradient = 0.0;
+				x = 0.0;
+				y = 0.0;
+				z = 0.0;
+				Hessian = Eigen::MatrixXd::Zero(3,3);
+				static int index;
+				index = rpnt*angular_points + apnt;
+				int rowidx = 0;
+				for(int i=0; i<Pmatrix.rows(); i++){
+					for(int j=0; j<Pmatrix.rows(); j++){
+						gradient += Pmatrix(i,j)*gridpoints[atom].gradients_norm(rowidx,index);
+						x += Pmatrix(i,j)*gridpoints[atom].gradients_x(rowidx,index);
+						y += Pmatrix(i,j)*gridpoints[atom].gradients_y(rowidx,index);
+						z += Pmatrix(i,j)*gridpoints[atom].gradients_z(rowidx,index);
+						//Hessian:
+						Hessian += Pmatrix(i,j)*gridpoints[atom].wave_Hess[rowidx].get_Hess(index);
+
+						rowidx++;
+					}
+				}
+				gridpoints[atom].PBE(3,index) = gradient; //write density gradient to grid
+				gridpoints[atom].PBE(0,index) = x; //write x,y,z elements:
+				gridpoints[atom].PBE(1,index) = y;
+				gridpoints[atom].PBE(2,index) = z;
+				gridpoints[atom].rho_Hess[index].set_Hess(Hessian);
+			}
+		}
+	}
+}
+
+//comput the alpha and beta gradients at each point
+void grid::set_gradient(const Eigen::MatrixXd& P_alpha, const Eigen::MatrixXd& P_beta){ //function overload
+	static double gradienta;
+	static double gradientb;
+	static double xa;
+	static double ya;
+	static double za;
+	static double xb;
+	static double yb;
+	static double zb;
+	static Eigen::MatrixXd Hessiana;
+	static Eigen::MatrixXd Hessianb;
+	for(int atom=0; atom<gridpoints.size(); atom++){
+		for(int rpnt=0; rpnt<radial_points; rpnt++){
+			for(int apnt=0; apnt<angular_points; apnt++){
+				gradienta = 0.0;
+				gradientb = 0.0;
+				xa = 0.0;
+				ya = 0.0;
+				za = 0.0;
+				xb = 0.0;
+				yb = 0.0;
+				zb = 0.0;
+				Hessiana = Eigen::MatrixXd::Zero(3,3);
+				Hessianb = Eigen::MatrixXd::Zero(3,3);
+				static int index;
+				index = rpnt*angular_points + apnt;
+				int rowidx = 0;
+				for(int i=0; i<P_alpha.rows(); i++){
+					for(int j=0; j<P_alpha.rows(); j++){
+						gradienta += P_alpha(i,j)*gridpoints[atom].gradients_norm(rowidx,index);
+						gradientb += P_beta(i,j)*gridpoints[atom].gradients_norm(rowidx,index);
+						
+						xa += P_alpha(i,j)*gridpoints[atom].gradients_x(rowidx,index);
+						ya += P_alpha(i,j)*gridpoints[atom].gradients_y(rowidx,index);
+						za += P_alpha(i,j)*gridpoints[atom].gradients_z(rowidx,index);
+						xb += P_beta(i,j)*gridpoints[atom].gradients_x(rowidx,index);
+						yb += P_beta(i,j)*gridpoints[atom].gradients_y(rowidx,index);
+						zb += P_beta(i,j)*gridpoints[atom].gradients_z(rowidx,index);
+						
+						//Hessian:
+						Hessiana += P_alpha(i,j)*gridpoints[atom].wave_Hess[rowidx].get_Hess(index);
+						Hessianb += P_beta(i,j)*gridpoints[atom].wave_Hess[rowidx].get_Hess(index);
+						
+						rowidx++;
+					}
+				}
+				vec3 temp;
+				temp << xa+xb,ya+yb,za+zb;
+				
+				gridpoints[atom].PBEC(3,index) = gradienta; //write density gradient to grid
+				gridpoints[atom].PBEC(7,index) = gradientb;
+				gridpoints[atom].PBEC(0,index) = xa; //write x,y,z elements:
+				gridpoints[atom].PBEC(1,index) = ya;
+				gridpoints[atom].PBEC(2,index) = za;
+				gridpoints[atom].PBEC(4,index) = xb; //write x,y,z elements:
+				gridpoints[atom].PBEC(5,index) = yb;
+				gridpoints[atom].PBEC(6,index) = zb;
+				
+				gridpoints[atom].alpha_Hess[index].set_Hess(Hessiana);
+				gridpoints[atom].beta_Hess[index].set_Hess(Hessianb);
+				gridpoints[atom].rho_Hess[index].set_Hess(Hessiana+Hessianb);
+				
+				gridpoints[atom].PBE(3,index) = temp.norm(); //write density gradient to grid
+				gridpoints[atom].PBE(0,index) = xa+xb; //write x,y,z elements:
+				gridpoints[atom].PBE(1,index) = ya+yb;
+				gridpoints[atom].PBE(2,index) = za+zb;
+			}
+		}
+	}
+}
+
 
 //*******************************************
 //Poisson potential:

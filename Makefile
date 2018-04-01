@@ -24,7 +24,7 @@ else
 endif
 
 # add here the source files for the compilation
-SOURCES = mydft.cpp prelim_math.cpp integrals.cpp hf.cpp dft.cpp quadrature.cpp lebedev.cpp Harmonics.cpp uhf.cpp udft.cpp
+SOURCES = mydft.cpp prelim_math.cpp integrals.cpp hf.cpp dft.cpp quadrature.cpp lebedev.cpp Harmonics.cpp uhf.cpp udft.cpp geo.cpp
 
 # create the obj variable by substituting the extension of the sources
 # and adding a path

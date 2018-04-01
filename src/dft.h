@@ -32,6 +32,7 @@ using namespace std;
 
 const bool Quadrature = true; //switch between Quadrature and Cartesian integration
 const bool Poisson = false; //switch between Poisson potential and repulsion matrix
+const bool GGA = true;
 
 //define function calls
 SCF_E SCF_DFT_energy(vector<CGF> AO_list, const vector<vec3>& pos_list, const vector<double>& charge_list, const vector<int>& nelec_list, const vector<int>& atnum_list);
@@ -47,5 +48,8 @@ double exchange_Dirac(double Density_alpha, double Density_beta);
 double exchange_potential(double Density_alpha, double Density_beta, bool ab);
 double correlation_VWN(double Density_alpha, double Density_beta);
 double VWN_potential(double Density_alpha, double Density_beta, bool ab);
+Eigen::VectorXd exchange_correlation(double Density_alpha, double Density_beta);
+Eigen::VectorXd PBE(double Density, double gradient);
+Eigen::VectorXd PBE(double Density_alpha, double Density_beta, Eigen::VectorXd gradienta, Eigen::VectorXd gradientb, Eigen::MatrixXd Hessiana, Eigen::MatrixXd Hessianb);
 
 #endif //_DFT_H
